@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Check, ChevronDown } from "lucide-react";
 import { BrandMark } from "@/components/layout/brand-mark";
+import { ConnectionStatus } from "@/components/layout/connection-status";
 import {
   MOCK_ACCOUNTS,
   MOCK_SOURCES,
@@ -158,10 +159,11 @@ export function Sidebar({
         )}
       </div>
 
-      <div className="border-t border-[var(--color-border)] px-5 py-3 text-[11px] text-[var(--color-fg-subtle)]">
-        <div className="flex items-center justify-between">
-          <span>MCP simulado · dev</span>
-          <span className="rounded-full bg-[var(--color-brand-cta)]/15 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-[var(--color-brand-cta)]">
+      <div className="space-y-2 border-t border-[var(--color-border)] px-4 py-3">
+        <ConnectionStatus />
+        <div className="flex items-center justify-between px-1 text-[10px] text-[var(--color-fg-subtle)]">
+          <span>Barbra · v0.1</span>
+          <span className="rounded-full bg-[var(--color-brand-cta)]/15 px-2 py-0.5 font-medium uppercase tracking-wider text-[var(--color-brand-cta)]">
             Opus 4.7
           </span>
         </div>

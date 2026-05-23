@@ -1,36 +1,41 @@
 /**
- * Master Metrics MCP client + tool resolver.
+ * Master Metrics MCP client.
  *
- * If USE_MOCK_MCP=false AND a token is set, we connect to the real MM
- * server at MASTERMETRICS_MCP_URL and return its tools. Otherwise we
- * fall back to the in-repo mock tools, which mirror MM's real names
- * and shapes (so the UI doesn't change between modes).
+ * Auth: OAuth 2.1 con PKCE — el usuario se autentica con su cuenta MM
+ * desde el browser (igual que cuando conectas MM a Claude.ai). El access
+ * token vive en una cookie httpOnly. Ver lib/mcp/oauth.ts + lib/mcp/session.ts.
  *
- * Transport: Streamable HTTP per MCP spec 2025-03-26+ (`type: "http"`).
- * MM also exposes OAuth (RFC 6749 + PKCE) on the same endpoint, but we
- * use the API-key path since this is server-to-server.
+ * Si el usuario aún no se conectó (sin sesión / token expirado y refresh
+ * falló), caemos a la capa de mocks para que la app siga siendo usable
+ * en modo demo.
  */
 
 import { createMCPClient } from "@ai-sdk/mcp";
 import { mockMasterMetricsTools } from "@/lib/ai/tools";
+import { getValidAccessToken } from "@/lib/mcp/session";
 
-export const useMockMcp =
-  process.env.USE_MOCK_MCP !== "false" || !process.env.MASTERMETRICS_MCP_TOKEN;
+const MCP_URL =
+  process.env.MASTERMETRICS_MCP_URL ?? "https://api.mastermetrics.com/api/v2/mcp";
 
-export async function getMasterMetricsTools() {
-  if (useMockMcp) return mockMasterMetricsTools;
+export interface ResolvedTools {
+  tools: Awaited<ReturnType<ReturnType<typeof createMCPClient> extends Promise<infer T> ? T extends { tools: () => any } ? T["tools"] : never : never>> | typeof mockMasterMetricsTools;
+  isLive: boolean;
+}
 
-  const url = process.env.MASTERMETRICS_MCP_URL!;
-  const token = process.env.MASTERMETRICS_MCP_TOKEN!;
+export async function getMasterMetricsTools(req: Request) {
+  const accessToken = await getValidAccessToken(req);
+  if (!accessToken) {
+    return { tools: mockMasterMetricsTools, isLive: false };
+  }
 
   const client = await createMCPClient({
     name: "mastermetrics",
     transport: {
       type: "http",
-      url,
-      headers: { Authorization: `Bearer ${token}` },
+      url: MCP_URL,
+      headers: { Authorization: `Bearer ${accessToken}` },
     },
   });
 
-  return await client.tools();
+  return { tools: await client.tools(), isLive: true };
 }

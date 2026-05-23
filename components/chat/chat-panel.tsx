@@ -3,7 +3,7 @@
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
 import { useMemo, useRef, useEffect, useState } from "react";
-import { ArrowUp, Sparkles } from "lucide-react";
+import { ArrowUp } from "lucide-react";
 import { Spark } from "@/components/layout/brand-mark";
 import { AccountsTable } from "@/components/generative/accounts-table";
 import { DataResult } from "@/components/generative/data-result";
@@ -79,10 +79,6 @@ export function ChatPanel({ selection }: { selection: SidebarSelection }) {
           {contextLine && (
             <p className="text-[11px] text-[var(--color-fg-subtle)]">{contextLine}</p>
           )}
-        </div>
-        <div className="flex items-center gap-2 text-[11px] text-[var(--color-fg-subtle)]">
-          <Sparkles className="size-3.5 text-[var(--color-brand-spark)]" />
-          <span>UI generativa · en streaming</span>
         </div>
       </header>
 
