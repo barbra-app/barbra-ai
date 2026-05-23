@@ -1,0 +1,87 @@
+@import "tailwindcss";
+
+/* ============================================================
+   Barbra design tokens — extracted from barbra.com.co (2026-05)
+   Hero is pure black with white headlines; CTA is electric royal
+   blue; spark/asterisk is sun-yellow; emphasis highlight is lemon.
+   ============================================================ */
+
+@theme {
+  /* Surfaces */
+  --color-bg: #0a0a0a;
+  --color-bg-elev: #131313;
+  --color-bg-elev-2: #1a1a1a;
+  --color-border: #1f1f1f;
+  --color-border-strong: #2a2a2a;
+
+  /* Foreground */
+  --color-fg: #fafafa;
+  --color-fg-muted: #a1a1a1;
+  --color-fg-subtle: #6b6b6b;
+
+  /* Brand */
+  --color-brand-spark: #f5c842;      /* yellow asterisk / dust */
+  --color-brand-highlight: #e8ff6b;  /* lemon underline highlight */
+  --color-brand-cta: #1e40ff;        /* electric royal blue pill */
+  --color-brand-cta-hover: #1633d9;
+  --color-brand-cta-fg: #ffffff;
+  --color-brand-sage: #9dd89c;       /* WHY BARBRA green X */
+
+  /* Charts (used by recharts series) */
+  --color-chart-1: #1e40ff;
+  --color-chart-2: #f5c842;
+  --color-chart-3: #e8ff6b;
+  --color-chart-4: #9dd89c;
+  --color-chart-5: #f97316;
+
+  /* Radius — Barbra uses fully rounded pills + lightly rounded cards */
+  --radius-pill: 9999px;
+  --radius-card: 14px;
+  --radius-input: 10px;
+
+  /* Fonts — set by next/font in layout.tsx */
+  --font-display: var(--font-bricolage), ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+}
+
+/* Global reset */
+html, body {
+  background-color: var(--color-bg);
+  color: var(--color-fg);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  font-feature-settings: "ss01", "cv11";
+}
+
+/* Display headings default */
+h1, h2, h3, h4 {
+  font-family: var(--font-display);
+  letter-spacing: -0.02em;
+  font-weight: 700;
+}
+
+/* Lemon highlight utility — matches the "No wasted windows" treatment */
+.barbra-highlight {
+  background-image: linear-gradient(180deg, transparent 60%, var(--color-brand-highlight) 60%);
+  background-repeat: no-repeat;
+  padding: 0 0.1em;
+}
+
+/* Subtle starfield grain for the hero / app shell, mimicking the landing dust field */
+.barbra-grain {
+  background-image:
+    radial-gradient(1px 1px at 20% 30%, rgba(255,255,255,0.06) 50%, transparent 51%),
+    radial-gradient(1px 1px at 70% 80%, rgba(255,255,255,0.04) 50%, transparent 51%),
+    radial-gradient(1px 1px at 40% 60%, rgba(245,200,66,0.05) 50%, transparent 51%);
+  background-size: 320px 320px, 240px 240px, 180px 180px;
+}
+
+/* Scrollbar — minimal dark */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--color-border-strong); border-radius: 8px; }
+::-webkit-scrollbar-thumb:hover { background: #3a3a3a; }
