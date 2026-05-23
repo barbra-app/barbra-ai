@@ -1,32 +1,36 @@
+import Image from "next/image";
 import { cn } from "@/lib/utils";
 
 /**
- * Barbra brand lockup — yellow 4-point spark + spaced wordmark.
- * Matches the header on barbra.com.co.
+ * Barbra brand lockup — the official wordmark PNG (white-on-transparent,
+ * sized for dark surfaces). Use <BrandMark> for the sidebar / app
+ * headers, and <Spark> for tight spots like message avatars.
  */
 export function BrandMark({
   className,
-  showWordmark = true,
+  height = 22,
 }: {
   className?: string;
-  showWordmark?: boolean;
+  height?: number;
 }) {
   return (
-    <div className={cn("flex items-center gap-2.5", className)}>
-      <Spark className="size-5 shrink-0" />
-      {showWordmark && (
-        <span
-          className="text-[15px] font-semibold tracking-[0.22em] text-[var(--color-fg)]"
-          style={{ fontFamily: "var(--font-display)" }}
-        >
-          BARBRA
-        </span>
-      )}
+    <div className={cn("flex items-center", className)}>
+      <Image
+        src="/barbra-logo.png"
+        alt="Barbra"
+        width={(600 / 95) * height}
+        height={height}
+        priority
+        className="select-none"
+      />
     </div>
   );
 }
 
-/** 4-point asterisk spark mark, yellow. */
+/**
+ * 4-point asterisk spark mark, yellow — used standalone where the full
+ * wordmark won't fit (message avatars, empty-state hero).
+ */
 export function Spark({ className }: { className?: string }) {
   return (
     <svg
