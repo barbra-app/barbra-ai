@@ -14,8 +14,16 @@ type Status = "loading" | "connected" | "disconnected";
  *
  * El callback OAuth añade ?mm_connected=1 / ?mm_error=… a la URL al
  * volver; lo limpiamos y refrescamos el estado.
+ *
+ * `onConnectionChange` se dispara cuando el estado de auth cambia
+ * (conectar exitoso, desconectar) para que el padre pueda refrescar
+ * data del MCP (ej. lista de sources/accounts en el sidebar).
  */
-export function ConnectionStatus() {
+export function ConnectionStatus({
+  onConnectionChange,
+}: {
+  onConnectionChange?: () => void;
+}) {
   const [status, setStatus] = useState<Status>("loading");
   const [error, setError] = useState<string | null>(null);
 
@@ -42,13 +50,19 @@ export function ConnectionStatus() {
       const url = window.location.pathname + (qs ? `?${qs}` : "");
       window.history.replaceState({}, "", url);
       if (err) setError(decodeURIComponent(err));
+      if (connected) onConnectionChange?.();
     }
     refresh();
+    // onConnectionChange intentionally omitted from deps — we only want
+    // to fire it on the post-callback boot, not every time the parent
+    // re-renders.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refresh]);
 
   async function disconnect() {
     await fetch("/api/auth/mcp/disconnect", { method: "POST" });
     setStatus("disconnected");
+    onConnectionChange?.();
   }
 
   function connect() {

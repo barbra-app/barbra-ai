@@ -1,12 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Check, ChevronDown, X } from "lucide-react";
 import { BrandMark } from "@/components/layout/brand-mark";
 import { ConnectionStatus } from "@/components/layout/connection-status";
 import {
-  MOCK_ACCOUNTS,
-  MOCK_SOURCES,
   type MMAccount,
   type Source,
   type SourceId,
@@ -18,7 +16,7 @@ export interface SidebarSelection {
   accountIds: string[];
 }
 
-const SOURCE_COLOR: Record<SourceId, string> = {
+const SOURCE_COLOR: Record<string, string> = {
   meta: "#1877F2",
   google: "#EA4335",
   tiktok: "#25F4EE",
@@ -30,6 +28,13 @@ const SOURCE_COLOR: Record<SourceId, string> = {
  * En md+ el sidebar es una barra lateral persistente (w-72).
  * En móvil es un drawer que entra desde la izquierda, controlado por
  * `open` desde el parent; tap fuera o en la X cierra.
+ *
+ * Las fuentes y cuentas se cargan desde /api/mcp/sources y
+ * /api/mcp/accounts. Esos endpoints devuelven la data real del MCP si
+ * hay sesión OAuth activa, o los mocks si no. Cuando ConnectionStatus
+ * detecta un cambio (conectar/desconectar), bumpea connectionKey y el
+ * sidebar refresca todo y limpia la selección anterior — los IDs de
+ * mocks no existen en MM real, así que reusarlos rompería las queries.
  */
 export function Sidebar({
   selection,
@@ -44,14 +49,71 @@ export function Sidebar({
 }) {
   const [sourcesOpen, setSourcesOpen] = useState(true);
   const [accountsOpen, setAccountsOpen] = useState(true);
+  const [sources, setSources] = useState<Source[]>([]);
+  const [accounts, setAccounts] = useState<MMAccount[]>([]);
+  const [loadingSources, setLoadingSources] = useState(true);
+  const [loadingAccounts, setLoadingAccounts] = useState(false);
+  const [sourcesError, setSourcesError] = useState<string | null>(null);
+  const [connectionKey, setConnectionKey] = useState(0);
 
-  const accountsForSource: MMAccount[] = selection.source
-    ? MOCK_ACCOUNTS.filter((a) => a.source === selection.source!.id)
-    : [];
+  // Fetch sources on mount + when connection changes
+  useEffect(() => {
+    let cancelled = false;
+    setLoadingSources(true);
+    setSourcesError(null);
+    fetch("/api/mcp/sources", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((d) => {
+        if (cancelled) return;
+        setSources(Array.isArray(d.sources) ? d.sources : []);
+        if (d.error) setSourcesError(d.error);
+      })
+      .catch((e) => {
+        if (!cancelled) setSourcesError(e instanceof Error ? e.message : String(e));
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingSources(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [connectionKey]);
+
+  // Fetch accounts when source selected or connection changes
+  useEffect(() => {
+    if (!selection.source) {
+      setAccounts([]);
+      return;
+    }
+    let cancelled = false;
+    setLoadingAccounts(true);
+    fetch(`/api/mcp/accounts?source=${encodeURIComponent(selection.source.id)}`, {
+      cache: "no-store",
+    })
+      .then((r) => r.json())
+      .then((d) => {
+        if (!cancelled) setAccounts(Array.isArray(d.accounts) ? d.accounts : []);
+      })
+      .catch(() => {
+        if (!cancelled) setAccounts([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingAccounts(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selection.source, connectionKey]);
+
+  function handleConnectionChange() {
+    // Limpia la selección — los IDs de la sesión anterior (real o mock)
+    // ya no son válidos en la nueva.
+    onSelectionChange({ source: null, accountIds: [] });
+    setConnectionKey((k) => k + 1);
+  }
 
   function pickSource(source: Source) {
     onSelectionChange({ source, accountIds: [] });
-    // En móvil queremos volver al chat después de elegir.
     closeIfMobile();
   }
 
@@ -70,7 +132,6 @@ export function Sidebar({
 
   return (
     <>
-      {/* Backdrop — solo en móvil cuando está abierto */}
       <div
         className={cn(
           "fixed inset-0 z-30 bg-black/60 backdrop-blur-sm transition-opacity md:hidden",
@@ -103,8 +164,19 @@ export function Sidebar({
             title="Fuentes de datos"
             open={sourcesOpen}
             onToggle={() => setSourcesOpen((v) => !v)}
+            loading={loadingSources}
           >
-            {MOCK_SOURCES.map((s) => {
+            {sourcesError && (
+              <p className="px-3 py-2 text-[11px] text-red-400">
+                {sourcesError}
+              </p>
+            )}
+            {!loadingSources && sources.length === 0 && !sourcesError && (
+              <p className="px-3 py-2 text-[12px] text-[var(--color-fg-subtle)]">
+                No hay fuentes conectadas en tu organización.
+              </p>
+            )}
+            {sources.map((s) => {
               const active = selection.source?.id === s.id;
               return (
                 <button
@@ -119,7 +191,7 @@ export function Sidebar({
                 >
                   <span
                     className="size-2 shrink-0 rounded-full"
-                    style={{ backgroundColor: SOURCE_COLOR[s.id] }}
+                    style={{ backgroundColor: SOURCE_COLOR[s.id] ?? "#888" }}
                     aria-hidden
                   />
                   <span
@@ -130,7 +202,7 @@ export function Sidebar({
                         : "text-[var(--color-fg-muted)]"
                     )}
                   >
-                    {s.displayName}
+                    {s.displayName ?? s.name ?? s.id}
                   </span>
                   {active && (
                     <Check className="size-3.5 text-[var(--color-brand-spark)]" />
@@ -142,16 +214,17 @@ export function Sidebar({
 
           {selection.source && (
             <Section
-              title={`Cuentas — ${selection.source.displayName}`}
+              title={`Cuentas — ${selection.source.displayName ?? selection.source.id}`}
               open={accountsOpen}
               onToggle={() => setAccountsOpen((v) => !v)}
+              loading={loadingAccounts}
             >
-              {accountsForSource.length === 0 && (
+              {!loadingAccounts && accounts.length === 0 && (
                 <p className="px-3 py-2 text-[12px] text-[var(--color-fg-subtle)]">
                   No hay cuentas conectadas para esta fuente.
                 </p>
               )}
-              {accountsForSource.map((a) => {
+              {accounts.map((a) => {
                 const selected = selection.accountIds.includes(a.id);
                 return (
                   <button
@@ -201,7 +274,7 @@ export function Sidebar({
         </div>
 
         <div className="space-y-2 border-t border-[var(--color-border)] px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-          <ConnectionStatus />
+          <ConnectionStatus onConnectionChange={handleConnectionChange} />
           <div className="flex items-center justify-between px-1 text-[10px] text-[var(--color-fg-subtle)]">
             <span>Barbra · v0.1</span>
             <span className="rounded-full bg-[var(--color-brand-cta)]/15 px-2 py-0.5 font-medium uppercase tracking-wider text-[var(--color-brand-cta)]">
@@ -218,11 +291,13 @@ function Section({
   title,
   open,
   onToggle,
+  loading,
   children,
 }: {
   title: string;
   open: boolean;
   onToggle: () => void;
+  loading?: boolean;
   children: React.ReactNode;
 }) {
   return (
@@ -231,7 +306,12 @@ function Section({
         onClick={onToggle}
         className="mb-1 flex w-full items-center justify-between px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--color-fg-subtle)] hover:text-[var(--color-fg-muted)]"
       >
-        <span>{title}</span>
+        <div className="flex items-center gap-2">
+          <span>{title}</span>
+          {loading && (
+            <span className="size-1 animate-pulse rounded-full bg-[var(--color-brand-spark)]" />
+          )}
+        </div>
         <ChevronDown
           className={cn(
             "size-3 transition-transform",
