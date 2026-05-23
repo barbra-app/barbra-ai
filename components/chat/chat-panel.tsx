@@ -4,7 +4,7 @@ import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
 import { useMemo, useRef, useEffect, useState } from "react";
 import { ArrowUp, Menu, SquarePen } from "lucide-react";
-import { Spark } from "@/components/layout/brand-mark";
+import { BrandMark, Spark } from "@/components/layout/brand-mark";
 import { AccountsTable } from "@/components/generative/accounts-table";
 import { DataResult } from "@/components/generative/data-result";
 import { DiscoveryChips } from "@/components/generative/discovery-chips";
@@ -74,24 +74,31 @@ export function ChatPanel({
 
   return (
     <div className="flex h-dvh min-w-0 flex-1 flex-col bg-[var(--color-bg)]">
-      <header className="flex h-14 shrink-0 items-center gap-3 border-b border-[var(--color-border)] px-4 md:px-6">
+      <header className="flex h-14 shrink-0 items-center gap-2 border-b border-[var(--color-border)] px-3 md:gap-3 md:px-6">
         <button
           onClick={onMenuClick}
-          className="-ml-1 grid size-9 place-items-center rounded-md text-[var(--color-fg-muted)] transition hover:bg-[var(--color-bg-elev)] hover:text-[var(--color-fg)] md:hidden"
+          className="-ml-1 grid size-9 shrink-0 place-items-center rounded-md text-[var(--color-fg-muted)] transition hover:bg-[var(--color-bg-elev)] hover:text-[var(--color-fg)] md:hidden"
           aria-label="Abrir menú"
         >
           <Menu className="size-5" />
         </button>
-        <div className="min-w-0 flex-1">
+
+        {/* Logo Barbra — visible solo en móvil; en desktop ya está en el sidebar */}
+        <BrandMark height={18} className="shrink-0 md:hidden" />
+
+        <div className="min-w-0 flex-1 md:ml-0">
+          {/* Nuevo chat button — en móvil sólo icono (espacio limitado),
+              en desktop icono + texto */}
           <button
             onClick={() => setMessages([])}
             disabled={messages.length === 0 || status === "streaming"}
-            className="-ml-2 inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 text-[14px] font-semibold tracking-tight text-[var(--color-fg)] transition hover:bg-[var(--color-bg-elev)] disabled:cursor-default disabled:opacity-100 disabled:hover:bg-transparent md:text-[15px]"
+            className="-ml-1 inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[14px] font-semibold tracking-tight text-[var(--color-fg)] transition hover:bg-[var(--color-bg-elev)] disabled:cursor-default disabled:opacity-60 disabled:hover:bg-transparent md:-ml-2 md:py-0.5 md:text-[15px]"
             style={{ fontFamily: "var(--font-display)" }}
-            title={messages.length > 0 ? "Empezar un chat nuevo" : undefined}
+            title={messages.length > 0 ? "Empezar un chat nuevo" : "Nuevo chat"}
+            aria-label="Nuevo chat"
           >
             <SquarePen className="size-3.5 text-[var(--color-fg-muted)]" />
-            <span className="truncate">Nuevo chat</span>
+            <span className="hidden truncate md:inline">Nuevo chat</span>
           </button>
           {contextLine && (
             <p className="truncate text-[11px] text-[var(--color-fg-subtle)]">
