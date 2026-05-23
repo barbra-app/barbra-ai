@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Bricolage_Grotesque, Inter } from "next/font/google";
 import "./globals.css";
 
@@ -20,6 +20,13 @@ export const metadata: Metadata = {
     "Inteligencia de medios potenciada por IA. Pregunta sobre cualquier cuenta o campaña y recibe gráficos y reportes en tiempo real.",
 };
 
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover", // habilita env(safe-area-inset-*) para iOS notch
+  themeColor: "#0a0a0a",
+};
+
 export default function RootLayout({
   children,
 }: {
@@ -27,7 +34,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="es" className={`${bricolage.variable} ${inter.variable}`}>
-      <body className="min-h-screen bg-[var(--color-bg)] text-[var(--color-fg)] antialiased">
+      <body className="min-h-dvh bg-[var(--color-bg)] text-[var(--color-fg)] antialiased">
         {children}
       </body>
     </html>

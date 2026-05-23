@@ -9,11 +9,20 @@ export default function Home() {
     source: null,
     accountIds: [],
   });
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden">
-      <Sidebar selection={selection} onSelectionChange={setSelection} />
-      <ChatPanel selection={selection} />
+    <div className="flex h-dvh w-screen overflow-hidden">
+      <Sidebar
+        selection={selection}
+        onSelectionChange={setSelection}
+        open={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
+      />
+      <ChatPanel
+        selection={selection}
+        onMenuClick={() => setSidebarOpen(true)}
+      />
     </div>
   );
 }

@@ -79,23 +79,18 @@ export function DataResult({ output }: { output: any }) {
 
 function TileGrid({ row, metrics }: { row: Record<string, any>; metrics: string[] }) {
   return (
-    <div className="my-3 rounded-[14px] border border-[var(--color-border)] bg-[var(--color-bg-elev)] p-4">
-      <div
-        className="grid gap-2"
-        style={{
-          gridTemplateColumns: `repeat(${Math.min(metrics.length, 4)}, minmax(0, 1fr))`,
-        }}
-      >
+    <div className="my-3 rounded-[14px] border border-[var(--color-border)] bg-[var(--color-bg-elev)] p-3 md:p-4">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4">
         {metrics.map((m) => (
           <div
             key={m}
             className="rounded-[10px] border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2.5"
           >
-            <div className="mb-1 text-[10px] font-medium uppercase tracking-wider text-[var(--color-fg-subtle)]">
+            <div className="mb-1 truncate text-[10px] font-medium uppercase tracking-wider text-[var(--color-fg-subtle)]">
               {m}
             </div>
             <div
-              className="text-[18px] font-semibold tabular-nums text-[var(--color-fg)]"
+              className="truncate text-[16px] font-semibold tabular-nums text-[var(--color-fg)] md:text-[18px]"
               style={{ fontFamily: "var(--font-display)" }}
             >
               {formatMetric(m, Number(row[m]) || 0)}
@@ -153,7 +148,7 @@ function ChartView({
           {dates.length} día{dates.length === 1 ? "" : "s"}
         </span>
       </header>
-      <div className="h-64 w-full">
+      <div className="h-56 w-full md:h-64">
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={merged} margin={{ top: 8, right: 12, left: -8, bottom: 0 }}>
             <CartesianGrid stroke="var(--color-border)" strokeDasharray="3 3" vertical={false} />

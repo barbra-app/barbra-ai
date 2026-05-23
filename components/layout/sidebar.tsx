@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Check, ChevronDown } from "lucide-react";
+import { Check, ChevronDown, X } from "lucide-react";
 import { BrandMark } from "@/components/layout/brand-mark";
 import { ConnectionStatus } from "@/components/layout/connection-status";
 import {
@@ -26,12 +26,21 @@ const SOURCE_COLOR: Record<SourceId, string> = {
   shopify: "#95BF47",
 };
 
+/**
+ * En md+ el sidebar es una barra lateral persistente (w-72).
+ * En móvil es un drawer que entra desde la izquierda, controlado por
+ * `open` desde el parent; tap fuera o en la X cierra.
+ */
 export function Sidebar({
   selection,
   onSelectionChange,
+  open,
+  onClose,
 }: {
   selection: SidebarSelection;
   onSelectionChange: (s: SidebarSelection) => void;
+  open: boolean;
+  onClose: () => void;
 }) {
   const [sourcesOpen, setSourcesOpen] = useState(true);
   const [accountsOpen, setAccountsOpen] = useState(true);
@@ -42,6 +51,8 @@ export function Sidebar({
 
   function pickSource(source: Source) {
     onSelectionChange({ source, accountIds: [] });
+    // En móvil queremos volver al chat después de elegir.
+    closeIfMobile();
   }
 
   function toggleAccount(id: string) {
@@ -51,124 +62,155 @@ export function Sidebar({
     onSelectionChange({ ...selection, accountIds: next });
   }
 
+  function closeIfMobile() {
+    if (typeof window !== "undefined" && window.innerWidth < 768) {
+      onClose();
+    }
+  }
+
   return (
-    <aside className="barbra-grain flex h-screen w-72 shrink-0 flex-col border-r border-[var(--color-border)] bg-[var(--color-bg)]">
-      <div className="flex h-14 items-center border-b border-[var(--color-border)] px-5">
-        <BrandMark />
-      </div>
+    <>
+      {/* Backdrop — solo en móvil cuando está abierto */}
+      <div
+        className={cn(
+          "fixed inset-0 z-30 bg-black/60 backdrop-blur-sm transition-opacity md:hidden",
+          open ? "opacity-100" : "pointer-events-none opacity-0"
+        )}
+        onClick={onClose}
+        aria-hidden
+      />
 
-      <div className="flex-1 overflow-y-auto px-3 py-4">
-        <Section
-          title="Fuentes de datos"
-          open={sourcesOpen}
-          onToggle={() => setSourcesOpen((v) => !v)}
-        >
-          {MOCK_SOURCES.map((s) => {
-            const active = selection.source?.id === s.id;
-            return (
-              <button
-                key={s.id}
-                onClick={() => pickSource(s)}
-                className={cn(
-                  "group flex w-full items-center gap-2.5 rounded-[10px] px-3 py-2 text-left transition",
-                  active
-                    ? "bg-[var(--color-bg-elev-2)]"
-                    : "hover:bg-[var(--color-bg-elev)]"
-                )}
-              >
-                <span
-                  className="size-2 shrink-0 rounded-full"
-                  style={{ backgroundColor: SOURCE_COLOR[s.id] }}
-                  aria-hidden
-                />
-                <span
-                  className={cn(
-                    "flex-1 truncate text-[13px]",
-                    active
-                      ? "font-medium text-[var(--color-fg)]"
-                      : "text-[var(--color-fg-muted)]"
-                  )}
-                >
-                  {s.displayName}
-                </span>
-                {active && (
-                  <Check className="size-3.5 text-[var(--color-brand-spark)]" />
-                )}
-              </button>
-            );
-          })}
-        </Section>
-
-        {selection.source && (
-          <Section
-            title={`Cuentas — ${selection.source.displayName}`}
-            open={accountsOpen}
-            onToggle={() => setAccountsOpen((v) => !v)}
+      <aside
+        className={cn(
+          "barbra-grain fixed inset-y-0 left-0 z-40 flex h-dvh w-[85vw] max-w-72 shrink-0 flex-col border-r border-[var(--color-border)] bg-[var(--color-bg)] transition-transform duration-200 ease-out",
+          "md:relative md:z-auto md:w-72 md:translate-x-0 md:transition-none",
+          open ? "translate-x-0" : "-translate-x-full md:translate-x-0"
+        )}
+      >
+        <div className="flex h-14 items-center justify-between border-b border-[var(--color-border)] px-5">
+          <BrandMark />
+          <button
+            onClick={onClose}
+            className="-mr-1.5 grid size-8 place-items-center rounded-md text-[var(--color-fg-subtle)] transition hover:bg-[var(--color-bg-elev)] hover:text-[var(--color-fg-muted)] md:hidden"
+            aria-label="Cerrar menú"
           >
-            {accountsForSource.length === 0 && (
-              <p className="px-3 py-2 text-[12px] text-[var(--color-fg-subtle)]">
-                No hay cuentas conectadas para esta fuente.
-              </p>
-            )}
-            {accountsForSource.map((a) => {
-              const selected = selection.accountIds.includes(a.id);
+            <X className="size-4" />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-3 py-4">
+          <Section
+            title="Fuentes de datos"
+            open={sourcesOpen}
+            onToggle={() => setSourcesOpen((v) => !v)}
+          >
+            {MOCK_SOURCES.map((s) => {
+              const active = selection.source?.id === s.id;
               return (
                 <button
-                  key={a.id}
-                  onClick={() => toggleAccount(a.id)}
+                  key={s.id}
+                  onClick={() => pickSource(s)}
                   className={cn(
-                    "group flex w-full items-start gap-2 rounded-[10px] px-3 py-2 text-left transition",
-                    selected
+                    "group flex w-full items-center gap-2.5 rounded-[10px] px-3 py-2.5 text-left transition",
+                    active
                       ? "bg-[var(--color-bg-elev-2)]"
                       : "hover:bg-[var(--color-bg-elev)]"
                   )}
                 >
                   <span
+                    className="size-2 shrink-0 rounded-full"
+                    style={{ backgroundColor: SOURCE_COLOR[s.id] }}
+                    aria-hidden
+                  />
+                  <span
                     className={cn(
-                      "mt-0.5 grid size-3.5 shrink-0 place-items-center rounded-[4px] border",
-                      selected
-                        ? "border-[var(--color-brand-spark)] bg-[var(--color-brand-spark)]/15"
-                        : "border-[var(--color-border-strong)]"
+                      "flex-1 truncate text-[13px]",
+                      active
+                        ? "font-medium text-[var(--color-fg)]"
+                        : "text-[var(--color-fg-muted)]"
                     )}
                   >
-                    {selected && (
-                      <Check className="size-2.5 text-[var(--color-brand-spark)]" />
-                    )}
+                    {s.displayName}
                   </span>
-                  <div className="min-w-0 flex-1">
-                    <div
-                      className={cn(
-                        "truncate text-[12.5px]",
-                        selected
-                          ? "text-[var(--color-fg)]"
-                          : "text-[var(--color-fg-muted)]"
-                      )}
-                    >
-                      {a.name}
-                    </div>
-                    <div className="truncate font-mono text-[10px] text-[var(--color-fg-subtle)]">
-                      {a.id}
-                      {a.currency ? ` · ${a.currency}` : ""}
-                      {a.status && a.status !== "active" ? ` · ${a.status}` : ""}
-                    </div>
-                  </div>
+                  {active && (
+                    <Check className="size-3.5 text-[var(--color-brand-spark)]" />
+                  )}
                 </button>
               );
             })}
           </Section>
-        )}
-      </div>
 
-      <div className="space-y-2 border-t border-[var(--color-border)] px-4 py-3">
-        <ConnectionStatus />
-        <div className="flex items-center justify-between px-1 text-[10px] text-[var(--color-fg-subtle)]">
-          <span>Barbra · v0.1</span>
-          <span className="rounded-full bg-[var(--color-brand-cta)]/15 px-2 py-0.5 font-medium uppercase tracking-wider text-[var(--color-brand-cta)]">
-            Opus 4.7
-          </span>
+          {selection.source && (
+            <Section
+              title={`Cuentas — ${selection.source.displayName}`}
+              open={accountsOpen}
+              onToggle={() => setAccountsOpen((v) => !v)}
+            >
+              {accountsForSource.length === 0 && (
+                <p className="px-3 py-2 text-[12px] text-[var(--color-fg-subtle)]">
+                  No hay cuentas conectadas para esta fuente.
+                </p>
+              )}
+              {accountsForSource.map((a) => {
+                const selected = selection.accountIds.includes(a.id);
+                return (
+                  <button
+                    key={a.id}
+                    onClick={() => toggleAccount(a.id)}
+                    className={cn(
+                      "group flex w-full items-start gap-2 rounded-[10px] px-3 py-2.5 text-left transition",
+                      selected
+                        ? "bg-[var(--color-bg-elev-2)]"
+                        : "hover:bg-[var(--color-bg-elev)]"
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        "mt-0.5 grid size-3.5 shrink-0 place-items-center rounded-[4px] border",
+                        selected
+                          ? "border-[var(--color-brand-spark)] bg-[var(--color-brand-spark)]/15"
+                          : "border-[var(--color-border-strong)]"
+                      )}
+                    >
+                      {selected && (
+                        <Check className="size-2.5 text-[var(--color-brand-spark)]" />
+                      )}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div
+                        className={cn(
+                          "truncate text-[12.5px]",
+                          selected
+                            ? "text-[var(--color-fg)]"
+                            : "text-[var(--color-fg-muted)]"
+                        )}
+                      >
+                        {a.name}
+                      </div>
+                      <div className="truncate font-mono text-[10px] text-[var(--color-fg-subtle)]">
+                        {a.id}
+                        {a.currency ? ` · ${a.currency}` : ""}
+                        {a.status && a.status !== "active" ? ` · ${a.status}` : ""}
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+            </Section>
+          )}
         </div>
-      </div>
-    </aside>
+
+        <div className="space-y-2 border-t border-[var(--color-border)] px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+          <ConnectionStatus />
+          <div className="flex items-center justify-between px-1 text-[10px] text-[var(--color-fg-subtle)]">
+            <span>Barbra · v0.1</span>
+            <span className="rounded-full bg-[var(--color-brand-cta)]/15 px-2 py-0.5 font-medium uppercase tracking-wider text-[var(--color-brand-cta)]">
+              Opus 4.7
+            </span>
+          </div>
+        </div>
+      </aside>
+    </>
   );
 }
 

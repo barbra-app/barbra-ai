@@ -22,7 +22,8 @@ export function AccountsTable({ accounts }: { accounts: MMAccount[] }) {
   }
   return (
     <div className="my-3 overflow-hidden rounded-[14px] border border-[var(--color-border)] bg-[var(--color-bg-elev)]">
-      <table className="w-full text-[12.5px]">
+      <div className="overflow-x-auto">
+      <table className="w-full min-w-[520px] text-[12.5px]">
         <thead>
           <tr className="border-b border-[var(--color-border)] text-[10px] uppercase tracking-wider text-[var(--color-fg-subtle)]">
             <th className="px-4 py-2 text-left font-medium">Cuenta</th>
@@ -54,6 +55,7 @@ export function AccountsTable({ accounts }: { accounts: MMAccount[] }) {
           })}
         </tbody>
       </table>
+      </div>
     </div>
   );
 }

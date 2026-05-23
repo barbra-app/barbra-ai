@@ -3,7 +3,7 @@
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
 import { useMemo, useRef, useEffect, useState } from "react";
-import { ArrowUp } from "lucide-react";
+import { ArrowUp, Menu } from "lucide-react";
 import { Spark } from "@/components/layout/brand-mark";
 import { AccountsTable } from "@/components/generative/accounts-table";
 import { DataResult } from "@/components/generative/data-result";
@@ -20,7 +20,13 @@ const SUGGESTIONS = [
   "Grafica el gasto diario por campaña de los últimos 30 días",
 ];
 
-export function ChatPanel({ selection }: { selection: SidebarSelection }) {
+export function ChatPanel({
+  selection,
+  onMenuClick,
+}: {
+  selection: SidebarSelection;
+  onMenuClick: () => void;
+}) {
   const transport = useMemo(
     () => new DefaultChatTransport({ api: "/api/chat" }),
     []
@@ -67,17 +73,26 @@ export function ChatPanel({ selection }: { selection: SidebarSelection }) {
   const isEmpty = messages.length === 0;
 
   return (
-    <div className="flex h-screen flex-1 flex-col bg-[var(--color-bg)]">
-      <header className="flex h-14 items-center justify-between border-b border-[var(--color-border)] px-6">
-        <div>
+    <div className="flex h-dvh min-w-0 flex-1 flex-col bg-[var(--color-bg)]">
+      <header className="flex h-14 shrink-0 items-center gap-3 border-b border-[var(--color-border)] px-4 md:px-6">
+        <button
+          onClick={onMenuClick}
+          className="-ml-1 grid size-9 place-items-center rounded-md text-[var(--color-fg-muted)] transition hover:bg-[var(--color-bg-elev)] hover:text-[var(--color-fg)] md:hidden"
+          aria-label="Abrir menú"
+        >
+          <Menu className="size-5" />
+        </button>
+        <div className="min-w-0 flex-1">
           <h1
-            className="text-[15px] font-semibold tracking-tight text-[var(--color-fg)]"
+            className="truncate text-[15px] font-semibold tracking-tight text-[var(--color-fg)]"
             style={{ fontFamily: "var(--font-display)" }}
           >
             Inteligencia
           </h1>
           {contextLine && (
-            <p className="text-[11px] text-[var(--color-fg-subtle)]">{contextLine}</p>
+            <p className="truncate text-[11px] text-[var(--color-fg-subtle)]">
+              {contextLine}
+            </p>
           )}
         </div>
       </header>
@@ -86,7 +101,7 @@ export function ChatPanel({ selection }: { selection: SidebarSelection }) {
         {isEmpty ? (
           <EmptyState onPick={submit} />
         ) : (
-          <div className="mx-auto max-w-3xl px-6 py-8">
+          <div className="mx-auto max-w-3xl px-4 py-6 md:px-6 md:py-8">
             {messages.map((m) => (
               <Message key={m.id} message={m} />
             ))}
@@ -100,7 +115,7 @@ export function ChatPanel({ selection }: { selection: SidebarSelection }) {
         )}
       </div>
 
-      <div className="border-t border-[var(--color-border)] bg-[var(--color-bg)] px-6 py-4">
+      <div className="shrink-0 border-t border-[var(--color-border)] bg-[var(--color-bg)] px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:px-6 md:py-4">
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -141,20 +156,20 @@ export function ChatPanel({ selection }: { selection: SidebarSelection }) {
 
 function EmptyState({ onPick }: { onPick: (text: string) => void }) {
   return (
-    <div className="flex h-full flex-col items-center justify-center px-6 text-center">
+    <div className="flex h-full flex-col items-center justify-center px-5 py-8 text-center md:px-6">
       <Spark className="mb-5 size-9" />
       <h2
-        className="mb-2 text-[28px] font-semibold leading-tight tracking-tight text-[var(--color-fg)]"
+        className="mb-2 text-[24px] font-semibold leading-tight tracking-tight text-[var(--color-fg)] md:text-[28px]"
         style={{ fontFamily: "var(--font-display)" }}
       >
         Pregúntale al motor.
       </h2>
-      <p className="mb-8 max-w-md text-[13.5px] text-[var(--color-fg-muted)]">
-        Elige una fuente y una cuenta a la izquierda, luego pregunta sobre
+      <p className="mb-8 max-w-md text-[13px] text-[var(--color-fg-muted)] md:text-[13.5px]">
+        Elige una fuente y una cuenta en el menú, luego pregunta sobre
         desempeño — Barbra trae datos en vivo de Master Metrics y los
         renderiza como gráficos, tablas y tarjetas KPI.
       </p>
-      <div className="grid w-full max-w-xl grid-cols-2 gap-2">
+      <div className="grid w-full max-w-xl grid-cols-1 gap-2 sm:grid-cols-2">
         {SUGGESTIONS.map((s) => (
           <button
             key={s}
