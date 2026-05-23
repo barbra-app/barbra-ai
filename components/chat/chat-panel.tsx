@@ -3,7 +3,7 @@
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
 import { useMemo, useRef, useEffect, useState } from "react";
-import { ArrowUp, Menu } from "lucide-react";
+import { ArrowUp, Menu, SquarePen } from "lucide-react";
 import { Spark } from "@/components/layout/brand-mark";
 import { AccountsTable } from "@/components/generative/accounts-table";
 import { DataResult } from "@/components/generative/data-result";
@@ -31,7 +31,7 @@ export function ChatPanel({
     () => new DefaultChatTransport({ api: "/api/chat" }),
     []
   );
-  const { messages, sendMessage, status } = useChat({ transport });
+  const { messages, sendMessage, setMessages, status } = useChat({ transport });
   const [input, setInput] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -83,12 +83,16 @@ export function ChatPanel({
           <Menu className="size-5" />
         </button>
         <div className="min-w-0 flex-1">
-          <h1
-            className="truncate text-[15px] font-semibold tracking-tight text-[var(--color-fg)]"
+          <button
+            onClick={() => setMessages([])}
+            disabled={messages.length === 0 || status === "streaming"}
+            className="-ml-2 inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 text-[14px] font-semibold tracking-tight text-[var(--color-fg)] transition hover:bg-[var(--color-bg-elev)] disabled:cursor-default disabled:opacity-100 disabled:hover:bg-transparent md:text-[15px]"
             style={{ fontFamily: "var(--font-display)" }}
+            title={messages.length > 0 ? "Empezar un chat nuevo" : undefined}
           >
-            Inteligencia
-          </h1>
+            <SquarePen className="size-3.5 text-[var(--color-fg-muted)]" />
+            <span className="truncate">Nuevo chat</span>
+          </button>
           {contextLine && (
             <p className="truncate text-[11px] text-[var(--color-fg-subtle)]">
               {contextLine}
