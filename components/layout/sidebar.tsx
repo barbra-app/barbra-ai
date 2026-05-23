@@ -5,22 +5,24 @@ import { Check, ChevronDown } from "lucide-react";
 import { BrandMark } from "@/components/layout/brand-mark";
 import {
   MOCK_ACCOUNTS,
-  MOCK_CAMPAIGNS,
-  type Account,
-  type Campaign,
+  MOCK_SOURCES,
+  type MMAccount,
+  type Source,
+  type SourceId,
 } from "@/lib/mcp/mock-data";
 import { cn } from "@/lib/utils";
 
 export interface SidebarSelection {
-  account: Account | null;
-  campaignIds: string[];
+  source: Source | null;
+  accountIds: string[];
 }
 
-const CHANNEL_COLORS: Record<Campaign["channel"], string> = {
+const SOURCE_COLOR: Record<SourceId, string> = {
   meta: "#1877F2",
   google: "#EA4335",
   tiktok: "#25F4EE",
   linkedin: "#0A66C2",
+  shopify: "#95BF47",
 };
 
 export function Sidebar({
@@ -30,22 +32,22 @@ export function Sidebar({
   selection: SidebarSelection;
   onSelectionChange: (s: SidebarSelection) => void;
 }) {
+  const [sourcesOpen, setSourcesOpen] = useState(true);
   const [accountsOpen, setAccountsOpen] = useState(true);
-  const [campaignsOpen, setCampaignsOpen] = useState(true);
 
-  const campaignsForAccount = selection.account
-    ? MOCK_CAMPAIGNS.filter((c) => c.accountId === selection.account!.id)
+  const accountsForSource: MMAccount[] = selection.source
+    ? MOCK_ACCOUNTS.filter((a) => a.source === selection.source!.id)
     : [];
 
-  function pickAccount(account: Account) {
-    onSelectionChange({ account, campaignIds: [] });
+  function pickSource(source: Source) {
+    onSelectionChange({ source, accountIds: [] });
   }
 
-  function toggleCampaign(id: string) {
-    const next = selection.campaignIds.includes(id)
-      ? selection.campaignIds.filter((c) => c !== id)
-      : [...selection.campaignIds, id];
-    onSelectionChange({ ...selection, campaignIds: next });
+  function toggleAccount(id: string) {
+    const next = selection.accountIds.includes(id)
+      ? selection.accountIds.filter((a) => a !== id)
+      : [...selection.accountIds, id];
+    onSelectionChange({ ...selection, accountIds: next });
   }
 
   return (
@@ -56,86 +58,99 @@ export function Sidebar({
 
       <div className="flex-1 overflow-y-auto px-3 py-4">
         <Section
-          title="Accounts"
-          open={accountsOpen}
-          onToggle={() => setAccountsOpen((v) => !v)}
+          title="Data Sources"
+          open={sourcesOpen}
+          onToggle={() => setSourcesOpen((v) => !v)}
         >
-          {MOCK_ACCOUNTS.map((a) => {
-            const active = selection.account?.id === a.id;
+          {MOCK_SOURCES.map((s) => {
+            const active = selection.source?.id === s.id;
             return (
               <button
-                key={a.id}
-                onClick={() => pickAccount(a)}
+                key={s.id}
+                onClick={() => pickSource(s)}
                 className={cn(
-                  "group flex w-full items-start justify-between gap-2 rounded-[10px] px-3 py-2.5 text-left transition",
+                  "group flex w-full items-center gap-2.5 rounded-[10px] px-3 py-2 text-left transition",
                   active
                     ? "bg-[var(--color-bg-elev-2)]"
                     : "hover:bg-[var(--color-bg-elev)]"
                 )}
               >
-                <div className="min-w-0">
-                  <div className="truncate text-[13px] font-medium text-[var(--color-fg)]">
-                    {a.name}
-                  </div>
-                  <div className="truncate text-[11px] text-[var(--color-fg-subtle)]">
-                    {a.industry} · {a.activeCampaigns} active
-                  </div>
-                </div>
+                <span
+                  className="size-2 shrink-0 rounded-full"
+                  style={{ backgroundColor: SOURCE_COLOR[s.id] }}
+                  aria-hidden
+                />
+                <span
+                  className={cn(
+                    "flex-1 truncate text-[13px]",
+                    active
+                      ? "font-medium text-[var(--color-fg)]"
+                      : "text-[var(--color-fg-muted)]"
+                  )}
+                >
+                  {s.displayName}
+                </span>
                 {active && (
-                  <Check className="mt-0.5 size-3.5 shrink-0 text-[var(--color-brand-spark)]" />
+                  <Check className="size-3.5 text-[var(--color-brand-spark)]" />
                 )}
               </button>
             );
           })}
         </Section>
 
-        {selection.account && (
+        {selection.source && (
           <Section
-            title={`Campaigns — ${selection.account.name}`}
-            open={campaignsOpen}
-            onToggle={() => setCampaignsOpen((v) => !v)}
+            title={`Accounts — ${selection.source.displayName}`}
+            open={accountsOpen}
+            onToggle={() => setAccountsOpen((v) => !v)}
           >
-            {campaignsForAccount.length === 0 && (
+            {accountsForSource.length === 0 && (
               <p className="px-3 py-2 text-[12px] text-[var(--color-fg-subtle)]">
-                No campaigns for this account.
+                No accounts connected for this source.
               </p>
             )}
-            {campaignsForAccount.map((c) => {
-              const selected = selection.campaignIds.includes(c.id);
+            {accountsForSource.map((a) => {
+              const selected = selection.accountIds.includes(a.id);
               return (
                 <button
-                  key={c.id}
-                  onClick={() => toggleCampaign(c.id)}
+                  key={a.id}
+                  onClick={() => toggleAccount(a.id)}
                   className={cn(
-                    "group flex w-full items-center gap-2.5 rounded-[10px] px-3 py-2 text-left transition",
+                    "group flex w-full items-start gap-2 rounded-[10px] px-3 py-2 text-left transition",
                     selected
                       ? "bg-[var(--color-bg-elev-2)]"
                       : "hover:bg-[var(--color-bg-elev)]"
                   )}
                 >
                   <span
-                    className="size-2 shrink-0 rounded-full"
-                    style={{ backgroundColor: CHANNEL_COLORS[c.channel] }}
-                    aria-hidden
-                  />
-                  <span
                     className={cn(
-                      "flex-1 truncate text-[12.5px]",
+                      "mt-0.5 grid size-3.5 shrink-0 place-items-center rounded-[4px] border",
                       selected
-                        ? "text-[var(--color-fg)]"
-                        : "text-[var(--color-fg-muted)]"
+                        ? "border-[var(--color-brand-spark)] bg-[var(--color-brand-spark)]/15"
+                        : "border-[var(--color-border-strong)]"
                     )}
                   >
-                    {c.name}
+                    {selected && (
+                      <Check className="size-2.5 text-[var(--color-brand-spark)]" />
+                    )}
                   </span>
-                  {c.status !== "active" && (
-                    <span className="text-[10px] uppercase tracking-wider text-[var(--color-fg-subtle)]">
-                      {c.status}
-                    </span>
-                  )}
-                  {selected && (
-                    <Check className="size-3 text-[var(--color-brand-spark)]" />
-                  )}
+                  <div className="min-w-0 flex-1">
+                    <div
+                      className={cn(
+                        "truncate text-[12.5px]",
+                        selected
+                          ? "text-[var(--color-fg)]"
+                          : "text-[var(--color-fg-muted)]"
+                      )}
+                    >
+                      {a.name}
+                    </div>
+                    <div className="truncate font-mono text-[10px] text-[var(--color-fg-subtle)]">
+                      {a.id}
+                      {a.currency ? ` · ${a.currency}` : ""}
+                      {a.status && a.status !== "active" ? ` · ${a.status}` : ""}
+                    </div>
+                  </div>
                 </button>
               );
             })}

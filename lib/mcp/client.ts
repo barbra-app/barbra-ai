@@ -1,42 +1,34 @@
 /**
- * Master Metrics MCP client.
+ * Master Metrics MCP client + tool resolver.
  *
- * When USE_MOCK_MCP=false and MASTERMETRICS_MCP_URL is set, this opens
- * a connection to the real Master Metrics MCP server and returns its
- * tools so they can be merged into the chat route alongside ours.
+ * If USE_MOCK_MCP=false AND a token is set, we connect to the real MM
+ * server at MASTERMETRICS_MCP_URL and return its tools. Otherwise we
+ * fall back to the in-repo mock tools, which mirror MM's real names
+ * and shapes (so the UI doesn't change between modes).
  *
- * MM, like most SaaS MCP servers (Linear, Notion, Sentry), almost
- * certainly uses URL-embedded auth — you paste a unique URL from their
- * dashboard and that's it, no bearer token. The token branch below is
- * a fallback for the rarer "header auth" pattern.
- *
- * Transport is Streamable HTTP (MCP spec 2025-03-26+), which replaced
- * the deprecated SSE transport. If MM is still on legacy SSE, swap
- * `type: "http"` for `type: "sse"`.
- *
- * If MM uses OAuth 2.1 with dynamic client registration instead, this
- * file needs a bigger rewrite — we'd add an /api/mcp/auth route to
- * handle the OAuth callback and store per-user tokens.
+ * Transport: Streamable HTTP per MCP spec 2025-03-26+ (`type: "http"`).
+ * MM also exposes OAuth (RFC 6749 + PKCE) on the same endpoint, but we
+ * use the API-key path since this is server-to-server.
  */
 
 import { createMCPClient } from "@ai-sdk/mcp";
+import { mockMasterMetricsTools } from "@/lib/ai/tools";
 
 export const useMockMcp =
-  process.env.USE_MOCK_MCP !== "false" || !process.env.MASTERMETRICS_MCP_URL;
+  process.env.USE_MOCK_MCP !== "false" || !process.env.MASTERMETRICS_MCP_TOKEN;
 
 export async function getMasterMetricsTools() {
-  if (useMockMcp) return {};
+  if (useMockMcp) return mockMasterMetricsTools;
 
   const url = process.env.MASTERMETRICS_MCP_URL!;
-  const token = process.env.MASTERMETRICS_MCP_TOKEN;
+  const token = process.env.MASTERMETRICS_MCP_TOKEN!;
 
   const client = await createMCPClient({
     name: "mastermetrics",
     transport: {
       type: "http",
       url,
-      // Headers are only included if a token is explicitly configured.
-      ...(token ? { headers: { Authorization: `Bearer ${token}` } } : {}),
+      headers: { Authorization: `Bearer ${token}` },
     },
   });
 

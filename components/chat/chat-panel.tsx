@@ -5,18 +5,19 @@ import { DefaultChatTransport } from "ai";
 import { useMemo, useRef, useEffect, useState } from "react";
 import { ArrowUp, Sparkles } from "lucide-react";
 import { Spark } from "@/components/layout/brand-mark";
-import { AccountList } from "@/components/generative/account-list";
-import { CampaignTable } from "@/components/generative/campaign-table";
-import { KpiSummary } from "@/components/generative/kpi-card";
-import { MetricLineChart } from "@/components/generative/metric-line-chart";
+import { AccountsTable } from "@/components/generative/accounts-table";
+import { DataResult } from "@/components/generative/data-result";
+import { DiscoveryChips } from "@/components/generative/discovery-chips";
+import { SourcesGrid } from "@/components/generative/sources-grid";
 import type { SidebarSelection } from "@/components/layout/sidebar";
+import { normalizeOutput } from "@/lib/mcp/normalize";
 import { cn } from "@/lib/utils";
 
 const SUGGESTIONS = [
-  "What accounts do I have?",
-  "How is the Bad Bunny Bogotá campaign performing?",
-  "Compare ROAS across Atelier Couture campaigns",
-  "Plot daily spend for the last 30 days on Casa del Mar",
+  "What data sources do I have connected?",
+  "Show me Meta accounts",
+  "Give me last 30 days totals for the selected account",
+  "Plot daily spend by campaign for the last 30 days",
 ];
 
 export function ChatPanel({ selection }: { selection: SidebarSelection }) {
@@ -36,12 +37,12 @@ export function ChatPanel({ selection }: { selection: SidebarSelection }) {
   }, [messages]);
 
   const contextLine = useMemo(() => {
-    if (!selection.account) return null;
-    const parts = [`Account: ${selection.account.name}`];
-    if (selection.campaignIds.length > 0) {
+    if (!selection.source) return null;
+    const parts = [`Source: ${selection.source.displayName}`];
+    if (selection.accountIds.length > 0) {
       parts.push(
-        `${selection.campaignIds.length} campaign${
-          selection.campaignIds.length === 1 ? "" : "s"
+        `${selection.accountIds.length} account${
+          selection.accountIds.length === 1 ? "" : "s"
         } selected`
       );
     }
@@ -50,15 +51,15 @@ export function ChatPanel({ selection }: { selection: SidebarSelection }) {
 
   function submit(text: string) {
     if (!text.trim() || status === "streaming") return;
-    // Stitch the sidebar selection into the message so Claude can ground tool calls
-    const selectionHint = selection.account
-      ? `\n\n[Context: account_id=${selection.account.id}${
-          selection.campaignIds.length
-            ? `, campaign_ids=${selection.campaignIds.join(",")}`
+    // Stitch the sidebar selection in so Claude can call get_data without re-asking
+    const hint = selection.source
+      ? `\n\n[Context: source=${selection.source.id}${
+          selection.accountIds.length
+            ? `, accounts=${JSON.stringify(selection.accountIds)}`
             : ""
         }]`
       : "";
-    sendMessage({ text: text + selectionHint });
+    sendMessage({ text: text + hint });
     setInput("");
   }
 
@@ -121,9 +122,9 @@ export function ChatPanel({ selection }: { selection: SidebarSelection }) {
             }}
             rows={1}
             placeholder={
-              selection.account
-                ? `Ask anything about ${selection.account.name}…`
-                : "Ask about an account, campaign, or metric…"
+              selection.source
+                ? `Ask anything about ${selection.source.displayName}…`
+                : "Ask about a source, account, or metric…"
             }
             className="flex-1 resize-none bg-transparent px-3 py-2 text-[14px] text-[var(--color-fg)] placeholder:text-[var(--color-fg-subtle)] focus:outline-none"
           />
@@ -152,9 +153,9 @@ function EmptyState({ onPick }: { onPick: (text: string) => void }) {
         Ask the engine.
       </h2>
       <p className="mb-8 max-w-md text-[13.5px] text-[var(--color-fg-muted)]">
-        Pick an account on the left, then ask about performance — Barbra will
-        pull live data from Master Metrics and render it back as charts,
-        tables, and KPI cards.
+        Pick a source and account on the left, then ask about performance —
+        Barbra pulls live data from Master Metrics and renders it back as
+        charts, tables, and KPI tiles.
       </p>
       <div className="grid w-full max-w-xl grid-cols-2 gap-2">
         {SUGGESTIONS.map((s) => (
@@ -196,7 +197,6 @@ function Message({ message }: { message: any }) {
 
 function PartRenderer({ part }: { part: any }) {
   if (part.type === "text") {
-    // Strip the "[Context: ...]" hint we appended to user messages
     const clean = part.text.replace(/\n\n\[Context:[^\]]*\]$/, "");
     return (
       <p className="whitespace-pre-wrap text-[14px] leading-relaxed text-[var(--color-fg)]">
@@ -205,10 +205,10 @@ function PartRenderer({ part }: { part: any }) {
     );
   }
 
-  // Tool parts come in as type: "tool-<toolName>"
   if (typeof part.type === "string" && part.type.startsWith("tool-")) {
+    const toolName = part.type.replace("tool-", "");
     if (part.state === "input-streaming" || part.state === "input-available") {
-      return <ToolPending name={part.type.replace("tool-", "")} />;
+      return <ToolPending name={toolName} />;
     }
     if (part.state === "output-error") {
       return (
@@ -218,7 +218,7 @@ function PartRenderer({ part }: { part: any }) {
       );
     }
     if (part.state === "output-available") {
-      return <ToolResult output={part.output} />;
+      return <ToolResult name={toolName} output={part.output} />;
     }
   }
 
@@ -235,18 +235,52 @@ function ToolPending({ name }: { name: string }) {
   );
 }
 
-function ToolResult({ output }: { output: any }) {
-  if (!output || typeof output !== "object") return null;
-  switch (output.type) {
-    case "account_list":
-      return <AccountList accounts={output.accounts} />;
-    case "campaign_table":
-      return <CampaignTable data={output} />;
-    case "kpi_summary":
-      return <KpiSummary data={output} />;
-    case "time_series":
-      return <MetricLineChart data={output} />;
+function ToolResult({ name, output }: { name: string; output: any }) {
+  const data: any = normalizeOutput(output);
+
+  switch (name) {
+    case "health_check":
+      return (
+        <div className="my-2 inline-flex items-center gap-2 rounded-full border border-[var(--color-brand-sage)]/30 bg-[var(--color-brand-sage)]/10 px-3 py-1 text-[11px] text-[var(--color-brand-sage)]">
+          <span className="size-1.5 rounded-full bg-[var(--color-brand-sage)]" />
+          MCP {data?.status ?? "ok"}
+        </div>
+      );
+
+    case "get_available_sources":
+      return <SourcesGrid sources={data?.sources ?? []} />;
+
+    case "get_accounts":
+      return <AccountsTable accounts={data?.accounts ?? []} />;
+
+    case "get_metrics":
+      return <DiscoveryChips kind="metrics" items={data?.metrics ?? []} />;
+
+    case "get_dimensions":
+      return <DiscoveryChips kind="dimensions" items={data?.dimensions ?? []} />;
+
+    case "get_dates":
+      return <DiscoveryChips kind="dates" items={data?.dates ?? []} />;
+
+    case "get_data":
+      return <DataResult output={data} />;
+
     default:
-      return null;
+      // Unknown tool (e.g. get_dashboards, or anything MM adds later) →
+      // collapsible raw JSON.
+      return <RawOutput name={name} output={data} />;
   }
+}
+
+function RawOutput({ name, output }: { name: string; output: any }) {
+  return (
+    <details className="my-2 rounded-[10px] border border-[var(--color-border)] bg-[var(--color-bg-elev)] p-3 text-[11px] text-[var(--color-fg-muted)]">
+      <summary className="cursor-pointer font-mono text-[var(--color-fg-subtle)]">
+        {name} result
+      </summary>
+      <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-all font-mono text-[10.5px]">
+        {JSON.stringify(output, null, 2)}
+      </pre>
+    </details>
+  );
 }

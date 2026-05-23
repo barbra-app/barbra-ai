@@ -1,123 +1,125 @@
 /**
- * Tool definitions surfaced to Claude.
+ * Mock implementation of Master Metrics' MCP tool surface.
  *
- * These are the contract between the model and our data layer. When
- * USE_MOCK_MCP=false we'll swap the execute() bodies to forward to the
- * real Master Metrics MCP via experimental_createMCPClient, but the
- * tool *shapes* should stay the same so the model and the UI don't
- * have to change.
+ * These tools share *names and shapes* with the real MM MCP server, so:
+ *   - When USE_MOCK_MCP=true (no API key set), these run locally and the
+ *     UI renders results normally.
+ *   - When USE_MOCK_MCP=false, getMasterMetricsTools() in lib/mcp/client.ts
+ *     returns the real tools from the MCP server and these mocks aren't
+ *     used. The chat panel dispatches on tool *name* so rendering works
+ *     the same either way.
  *
- * Tool outputs are intentionally structured (not prose) — the chat
- * route renders them as React components (generative UI), and Claude
- * gets a short text summary alongside.
+ * Tool names match MM exactly:
+ *   health_check, get_available_sources, get_accounts, get_metrics,
+ *   get_dimensions, get_dates, get_data.
  */
 
 import { tool } from "ai";
 import { z } from "zod";
 import {
+  DIMENSIONS_BY_SOURCE,
+  METRICS_BY_SOURCE,
   MOCK_ACCOUNTS,
-  MOCK_CAMPAIGNS,
-  generateMetrics,
-  aggregateMetrics,
+  MOCK_SOURCES,
+  simulateGetData,
+  type SourceId,
 } from "@/lib/mcp/mock-data";
 
-export const listAccountsTool = tool({
+const SourceIdSchema = z.enum(["meta", "google", "tiktok", "linkedin", "shopify"]);
+
+const healthCheck = tool({
   description:
-    "List every client account the user has access to in Master Metrics. Use this when the user asks 'what accounts do I have', wants an overview, or hasn't yet picked an account.",
+    "Check if the MCP server and API are operational. Returns status ok when healthy.",
   inputSchema: z.object({}),
-  execute: async () => {
-    return {
-      type: "account_list" as const,
-      accounts: MOCK_ACCOUNTS,
-    };
-  },
+  execute: async () => ({ status: "ok", env: "mock" }),
 });
 
-export const listCampaignsTool = tool({
+const getAvailableSources = tool({
   description:
-    "List campaigns for a given account, optionally filtered by channel or status. Returns a table the UI will render.",
-  inputSchema: z.object({
-    accountId: z.string().describe("Account id from list_accounts, e.g. 'acc_live'"),
-    channel: z.enum(["meta", "google", "tiktok", "linkedin"]).optional(),
-    status: z.enum(["active", "paused", "ended"]).optional(),
-  }),
-  execute: async ({ accountId, channel, status }) => {
-    const account = MOCK_ACCOUNTS.find((a) => a.id === accountId);
-    const campaigns = MOCK_CAMPAIGNS.filter(
-      (c) =>
-        c.accountId === accountId &&
-        (!channel || c.channel === channel) &&
-        (!status || c.status === status)
-    );
-    return {
-      type: "campaign_table" as const,
-      accountName: account?.name ?? accountId,
-      campaigns,
-    };
-  },
+    "Returns the list of data sources connected to the organization (e.g. meta, google, tiktok). Organization is derived from the API key — no extra arguments needed.",
+  inputSchema: z.object({}),
+  execute: async () => ({ sources: MOCK_SOURCES }),
 });
 
-export const getKpiSummaryTool = tool({
+const getAccounts = tool({
   description:
-    "Get headline KPIs (spend, revenue, ROAS, CPA, CTR, CVR, conversions) for one or more campaigns over a window. Use when the user asks 'how is X performing' or 'give me the numbers for Y'. Returns a row of KPI cards.",
+    "Returns the list of connected accounts for a given data source. Use get_available_sources first to obtain valid source names.",
   inputSchema: z.object({
-    campaignIds: z.array(z.string()).min(1).describe("One or more campaign ids"),
-    days: z.number().int().min(1).max(90).default(30),
+    source: SourceIdSchema.describe("Data source identifier, e.g. meta, google, tiktok"),
   }),
-  execute: async ({ campaignIds, days }) => {
-    const allPoints = campaignIds.flatMap((id) => generateMetrics(id, days));
-    const totals = aggregateMetrics(allPoints);
-    const campaigns = campaignIds
-      .map((id) => MOCK_CAMPAIGNS.find((c) => c.id === id))
-      .filter((c): c is NonNullable<typeof c> => c != null);
-    return {
-      type: "kpi_summary" as const,
-      label: campaigns.map((c) => c.name).join(" + ") || "Selection",
-      days,
-      kpis: totals,
-    };
-  },
+  execute: async ({ source }) => ({
+    accounts: MOCK_ACCOUNTS.filter((a) => a.source === source),
+  }),
 });
 
-export const getTimeSeriesTool = tool({
+const getMetrics = tool({
+  description: "Returns the list of available metrics for a given data source.",
+  inputSchema: z.object({ source: SourceIdSchema }),
+  execute: async ({ source }) => ({
+    source,
+    metrics: METRICS_BY_SOURCE[source] ?? [],
+  }),
+});
+
+const getDimensions = tool({
+  description: "Returns the list of available dimensions (breakdowns) for a given data source.",
+  inputSchema: z.object({ source: SourceIdSchema }),
+  execute: async ({ source }) => ({
+    source,
+    dimensions: DIMENSIONS_BY_SOURCE[source] ?? [],
+  }),
+});
+
+const getDates = tool({
   description:
-    "Get a daily time series for a chosen metric across one or more campaigns. Use this when the user asks 'show me a chart of', 'plot', 'how did X trend', or wants to compare campaigns over time. Returns a line chart.",
-  inputSchema: z.object({
-    campaignIds: z.array(z.string()).min(1),
-    metric: z.enum([
-      "spend",
-      "impressions",
-      "clicks",
-      "conversions",
-      "revenue",
-    ]),
-    days: z.number().int().min(7).max(90).default(30),
-  }),
-  execute: async ({ campaignIds, metric, days }) => {
-    const series = campaignIds.map((id) => {
-      const campaign = MOCK_CAMPAIGNS.find((c) => c.id === id);
-      const points = generateMetrics(id, days);
-      return {
-        campaignId: id,
-        campaignName: campaign?.name ?? id,
-        channel: campaign?.channel,
-        points: points.map((p) => ({ date: p.date, value: p[metric] })),
-      };
-    });
-    return {
-      type: "time_series" as const,
-      metric,
-      days,
-      series,
-    };
-  },
+    "Returns the available date fields for sources that require a date field on get_data requests (e.g. Kommo, GoHighLevel, Close, Pipedrive, HubSpot). Use this tool to discover valid dateType values.",
+  inputSchema: z.object({ source: SourceIdSchema }),
+  execute: async () => ({ dates: [] }),
 });
 
-export const barbraTools = {
-  list_accounts: listAccountsTool,
-  list_campaigns: listCampaignsTool,
-  get_kpi_summary: getKpiSummaryTool,
-  get_time_series: getTimeSeriesTool,
+const getData = tool({
+  description:
+    "Execute a data search query against a source. Returns tabular data with metrics and breakdowns. Use the discovery tools first to build valid queries.",
+  inputSchema: z.object({
+    source: SourceIdSchema,
+    accounts: z.array(z.string()).describe("Account IDs from get_accounts"),
+    metrics: z.array(z.string()).describe("Array of metric names from get_metrics"),
+    breakdowns: z
+      .array(z.string())
+      .optional()
+      .describe("Dimension names from get_dimensions"),
+    since: z.string().describe("Start date, ISO format: YYYY-MM-DD"),
+    until: z.string().describe("End date, ISO format: YYYY-MM-DD"),
+    dateType: z
+      .string()
+      .optional()
+      .describe("Required for CRM sources (KOMMO, GOHIGHLEVEL, CLOSE, PIPEDRIVE). e.g. created_at"),
+    tileData: z
+      .boolean()
+      .optional()
+      .describe("If true, returns aggregated tile format (totals only, no row breakdown)"),
+  }),
+  execute: async (args) =>
+    simulateGetData({
+      source: args.source as SourceId,
+      accounts: args.accounts,
+      metrics: args.metrics,
+      breakdowns: args.breakdowns,
+      since: args.since,
+      until: args.until,
+      dateType: args.dateType,
+      tileData: args.tileData ?? false,
+    }),
+});
+
+export const mockMasterMetricsTools = {
+  health_check: healthCheck,
+  get_available_sources: getAvailableSources,
+  get_accounts: getAccounts,
+  get_metrics: getMetrics,
+  get_dimensions: getDimensions,
+  get_dates: getDates,
+  get_data: getData,
 };
 
-export type BarbraToolName = keyof typeof barbraTools;
+export type MockToolName = keyof typeof mockMasterMetricsTools;

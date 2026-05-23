@@ -6,8 +6,8 @@ import { ChatPanel } from "@/components/chat/chat-panel";
 
 export default function Home() {
   const [selection, setSelection] = useState<SidebarSelection>({
-    account: null,
-    campaignIds: [],
+    source: null,
+    accountIds: [],
   });
 
   return (
