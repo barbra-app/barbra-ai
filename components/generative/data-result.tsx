@@ -55,7 +55,7 @@ export function DataResult({ output }: { output: any }) {
   if (!rows.length) {
     return (
       <div className="my-3 rounded-[12px] border border-[var(--color-border)] bg-[var(--color-bg-elev)] p-4 text-[12px] text-[var(--color-fg-muted)]">
-        No rows returned for that query.
+        Esta consulta no devolvió resultados.
       </div>
     );
   }
@@ -147,10 +147,10 @@ function ChartView({
           className="text-[13px] font-medium capitalize text-[var(--color-fg)]"
           style={{ fontFamily: "var(--font-sans)" }}
         >
-          {metric} {breakdownCol ? `· by ${breakdownCol}` : ""}
+          {metric} {breakdownCol ? `· por ${breakdownCol}` : ""}
         </h3>
         <span className="text-[11px] text-[var(--color-fg-subtle)]">
-          {dates.length} day{dates.length === 1 ? "" : "s"}
+          {dates.length} día{dates.length === 1 ? "" : "s"}
         </span>
       </header>
       <div className="h-64 w-full">
@@ -256,7 +256,7 @@ function TableView({
       </div>
       {more > 0 && (
         <div className="border-t border-[var(--color-border)] px-3 py-2 text-[11px] text-[var(--color-fg-subtle)]">
-          + {more} more row{more === 1 ? "" : "s"}
+          + {more} fila{more === 1 ? "" : "s"} más
         </div>
       )}
     </div>

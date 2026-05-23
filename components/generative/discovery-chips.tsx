@@ -5,6 +5,18 @@ interface Props {
   items: Array<MMMetric | MMDimension | { name: string; label?: string }>;
 }
 
+const KIND_LABEL: Record<Props["kind"], { singular: string; plural: string }> = {
+  metrics: { singular: "métrica", plural: "métricas" },
+  dimensions: { singular: "dimensión", plural: "dimensiones" },
+  dates: { singular: "fecha", plural: "fechas" },
+};
+
+const KIND_EMPTY: Record<Props["kind"], string> = {
+  metrics: "No hay métricas disponibles para esta fuente.",
+  dimensions: "No hay dimensiones disponibles para esta fuente.",
+  dates: "No hay campos de fecha disponibles para esta fuente.",
+};
+
 const TYPE_BADGE: Record<string, string> = {
   currency: "bg-[var(--color-brand-cta)]/12 text-[var(--color-brand-cta)]",
   number: "bg-[var(--color-fg-muted)]/10 text-[var(--color-fg-muted)]",
@@ -16,14 +28,15 @@ export function DiscoveryChips({ kind, items }: Props) {
   if (!items?.length) {
     return (
       <div className="my-3 rounded-[12px] border border-[var(--color-border)] bg-[var(--color-bg-elev)] p-4 text-[12px] text-[var(--color-fg-muted)]">
-        No {kind} available for this source.
+        {KIND_EMPTY[kind]}
       </div>
     );
   }
+  const label = items.length === 1 ? KIND_LABEL[kind].singular : KIND_LABEL[kind].plural;
   return (
     <div className="my-3 rounded-[14px] border border-[var(--color-border)] bg-[var(--color-bg-elev)] p-3">
       <div className="mb-2 text-[10px] font-medium uppercase tracking-wider text-[var(--color-fg-subtle)]">
-        {items.length} {kind}
+        {items.length} {label}
       </div>
       <div className="flex flex-wrap gap-1.5">
         {items.map((item) => {

@@ -15,9 +15,9 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "Barbra — The GTM engine",
+  title: "Barbra — El motor de GTM",
   description:
-    "AI-powered media intelligence. Ask questions across every account and campaign, get live charts and reports back.",
+    "Inteligencia de medios potenciada por IA. Pregunta sobre cualquier cuenta o campaña y recibe gráficos y reportes en tiempo real.",
 };
 
 export default function RootLayout({
@@ -26,7 +26,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={`${bricolage.variable} ${inter.variable}`}>
+    <html lang="es" className={`${bricolage.variable} ${inter.variable}`}>
       <body className="min-h-screen bg-[var(--color-bg)] text-[var(--color-fg)] antialiased">
         {children}
       </body>

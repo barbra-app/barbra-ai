@@ -14,10 +14,10 @@ import { normalizeOutput } from "@/lib/mcp/normalize";
 import { cn } from "@/lib/utils";
 
 const SUGGESTIONS = [
-  "What data sources do I have connected?",
-  "Show me Meta accounts",
-  "Give me last 30 days totals for the selected account",
-  "Plot daily spend by campaign for the last 30 days",
+  "¿Qué fuentes de datos tengo conectadas?",
+  "Muéstrame las cuentas de Meta",
+  "Dame los totales de los últimos 30 días para la cuenta seleccionada",
+  "Grafica el gasto diario por campaña de los últimos 30 días",
 ];
 
 export function ChatPanel({ selection }: { selection: SidebarSelection }) {
@@ -38,12 +38,12 @@ export function ChatPanel({ selection }: { selection: SidebarSelection }) {
 
   const contextLine = useMemo(() => {
     if (!selection.source) return null;
-    const parts = [`Source: ${selection.source.displayName}`];
+    const parts = [`Fuente: ${selection.source.displayName}`];
     if (selection.accountIds.length > 0) {
       parts.push(
-        `${selection.accountIds.length} account${
+        `${selection.accountIds.length} cuenta${
           selection.accountIds.length === 1 ? "" : "s"
-        } selected`
+        } seleccionada${selection.accountIds.length === 1 ? "" : "s"}`
       );
     }
     return parts.join(" · ");
@@ -51,7 +51,8 @@ export function ChatPanel({ selection }: { selection: SidebarSelection }) {
 
   function submit(text: string) {
     if (!text.trim() || status === "streaming") return;
-    // Stitch the sidebar selection in so Claude can call get_data without re-asking
+    // Pasa la selección del sidebar como contexto para que Claude no tenga
+    // que volver a preguntar source/accounts en cada turno.
     const hint = selection.source
       ? `\n\n[Context: source=${selection.source.id}${
           selection.accountIds.length
@@ -73,7 +74,7 @@ export function ChatPanel({ selection }: { selection: SidebarSelection }) {
             className="text-[15px] font-semibold tracking-tight text-[var(--color-fg)]"
             style={{ fontFamily: "var(--font-display)" }}
           >
-            Intelligence
+            Inteligencia
           </h1>
           {contextLine && (
             <p className="text-[11px] text-[var(--color-fg-subtle)]">{contextLine}</p>
@@ -81,7 +82,7 @@ export function ChatPanel({ selection }: { selection: SidebarSelection }) {
         </div>
         <div className="flex items-center gap-2 text-[11px] text-[var(--color-fg-subtle)]">
           <Sparkles className="size-3.5 text-[var(--color-brand-spark)]" />
-          <span>Generative UI · streamed</span>
+          <span>UI generativa · en streaming</span>
         </div>
       </header>
 
@@ -96,7 +97,7 @@ export function ChatPanel({ selection }: { selection: SidebarSelection }) {
             {status === "streaming" && (
               <div className="my-2 flex items-center gap-2 text-[12px] text-[var(--color-fg-subtle)]">
                 <span className="size-1.5 animate-pulse rounded-full bg-[var(--color-brand-spark)]" />
-                Thinking…
+                Pensando…
               </div>
             )}
           </div>
@@ -123,8 +124,8 @@ export function ChatPanel({ selection }: { selection: SidebarSelection }) {
             rows={1}
             placeholder={
               selection.source
-                ? `Ask anything about ${selection.source.displayName}…`
-                : "Ask about a source, account, or metric…"
+                ? `Pregunta lo que quieras sobre ${selection.source.displayName}…`
+                : "Pregunta sobre una fuente, cuenta o métrica…"
             }
             className="flex-1 resize-none bg-transparent px-3 py-2 text-[14px] text-[var(--color-fg)] placeholder:text-[var(--color-fg-subtle)] focus:outline-none"
           />
@@ -132,7 +133,7 @@ export function ChatPanel({ selection }: { selection: SidebarSelection }) {
             type="submit"
             disabled={!input.trim() || status === "streaming"}
             className="grid size-9 place-items-center rounded-full bg-[var(--color-brand-cta)] text-[var(--color-brand-cta-fg)] transition hover:bg-[var(--color-brand-cta-hover)] disabled:cursor-not-allowed disabled:opacity-40"
-            aria-label="Send"
+            aria-label="Enviar"
           >
             <ArrowUp className="size-4" />
           </button>
@@ -150,12 +151,12 @@ function EmptyState({ onPick }: { onPick: (text: string) => void }) {
         className="mb-2 text-[28px] font-semibold leading-tight tracking-tight text-[var(--color-fg)]"
         style={{ fontFamily: "var(--font-display)" }}
       >
-        Ask the engine.
+        Pregúntale al motor.
       </h2>
       <p className="mb-8 max-w-md text-[13.5px] text-[var(--color-fg-muted)]">
-        Pick a source and account on the left, then ask about performance —
-        Barbra pulls live data from Master Metrics and renders it back as
-        charts, tables, and KPI tiles.
+        Elige una fuente y una cuenta a la izquierda, luego pregunta sobre
+        desempeño — Barbra trae datos en vivo de Master Metrics y los
+        renderiza como gráficos, tablas y tarjetas KPI.
       </p>
       <div className="grid w-full max-w-xl grid-cols-2 gap-2">
         {SUGGESTIONS.map((s) => (
@@ -213,7 +214,7 @@ function PartRenderer({ part }: { part: any }) {
     if (part.state === "output-error") {
       return (
         <div className="my-2 rounded-[10px] border border-red-500/30 bg-red-500/5 px-3 py-2 text-[12px] text-red-400">
-          Tool error: {String(part.errorText ?? "unknown")}
+          Error de herramienta: {String(part.errorText ?? "desconocido")}
         </div>
       );
     }
@@ -230,7 +231,7 @@ function ToolPending({ name }: { name: string }) {
     <div className="my-2 flex items-center gap-2 text-[11px] text-[var(--color-fg-subtle)]">
       <span className="size-1.5 animate-pulse rounded-full bg-[var(--color-brand-cta)]" />
       <span className="font-mono">{name}</span>
-      <span>running…</span>
+      <span>ejecutando…</span>
     </div>
   );
 }
@@ -266,8 +267,6 @@ function ToolResult({ name, output }: { name: string; output: any }) {
       return <DataResult output={data} />;
 
     default:
-      // Unknown tool (e.g. get_dashboards, or anything MM adds later) →
-      // collapsible raw JSON.
       return <RawOutput name={name} output={data} />;
   }
 }
@@ -276,7 +275,7 @@ function RawOutput({ name, output }: { name: string; output: any }) {
   return (
     <details className="my-2 rounded-[10px] border border-[var(--color-border)] bg-[var(--color-bg-elev)] p-3 text-[11px] text-[var(--color-fg-muted)]">
       <summary className="cursor-pointer font-mono text-[var(--color-fg-subtle)]">
-        {name} result
+        Resultado de {name}
       </summary>
       <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-all font-mono text-[10.5px]">
         {JSON.stringify(output, null, 2)}

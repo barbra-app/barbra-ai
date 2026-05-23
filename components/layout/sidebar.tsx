@@ -58,7 +58,7 @@ export function Sidebar({
 
       <div className="flex-1 overflow-y-auto px-3 py-4">
         <Section
-          title="Data Sources"
+          title="Fuentes de datos"
           open={sourcesOpen}
           onToggle={() => setSourcesOpen((v) => !v)}
         >
@@ -100,13 +100,13 @@ export function Sidebar({
 
         {selection.source && (
           <Section
-            title={`Accounts — ${selection.source.displayName}`}
+            title={`Cuentas — ${selection.source.displayName}`}
             open={accountsOpen}
             onToggle={() => setAccountsOpen((v) => !v)}
           >
             {accountsForSource.length === 0 && (
               <p className="px-3 py-2 text-[12px] text-[var(--color-fg-subtle)]">
-                No accounts connected for this source.
+                No hay cuentas conectadas para esta fuente.
               </p>
             )}
             {accountsForSource.map((a) => {
@@ -160,7 +160,7 @@ export function Sidebar({
 
       <div className="border-t border-[var(--color-border)] px-5 py-3 text-[11px] text-[var(--color-fg-subtle)]">
         <div className="flex items-center justify-between">
-          <span>Mock MCP · dev</span>
+          <span>MCP simulado · dev</span>
           <span className="rounded-full bg-[var(--color-brand-cta)]/15 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-[var(--color-brand-cta)]">
             Opus 4.7
           </span>

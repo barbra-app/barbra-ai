@@ -12,7 +12,7 @@ export function SourcesGrid({ sources }: { sources: Source[] }) {
   if (!sources?.length) {
     return (
       <div className="my-3 rounded-[12px] border border-[var(--color-border)] bg-[var(--color-bg-elev)] p-4 text-[12px] text-[var(--color-fg-muted)]">
-        No data sources connected yet. Connect Meta, Google, or another platform in the Master Metrics dashboard.
+        Aún no hay fuentes de datos conectadas. Conecta Meta, Google u otra plataforma desde el dashboard de Master Metrics.
       </div>
     );
   }
