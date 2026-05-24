@@ -44,7 +44,7 @@ export function ChatPanel({
 
   const contextLine = useMemo(() => {
     if (!selection.source) return null;
-    const parts = [`Fuente: ${selection.source.displayName}`];
+    const parts = [`Fuente: ${selection.source.name}`];
     if (selection.accountIds.length > 0) {
       parts.push(
         `${selection.accountIds.length} cuenta${
@@ -146,7 +146,7 @@ export function ChatPanel({
             rows={1}
             placeholder={
               selection.source
-                ? `Pregunta lo que quieras sobre ${selection.source.displayName}…`
+                ? `Pregunta lo que quieras sobre ${selection.source.name}…`
                 : "Pregunta sobre una fuente, cuenta o métrica…"
             }
             className="flex-1 resize-none bg-transparent px-3 py-2 text-[14px] text-[var(--color-fg)] placeholder:text-[var(--color-fg-subtle)] focus:outline-none"

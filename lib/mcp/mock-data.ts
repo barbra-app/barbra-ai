@@ -26,10 +26,19 @@ export type SourceId =
   | "linkedin"
   | "shopify";
 
+/**
+ * Forma canónica para la UI: { id, name }.
+ *   - id: identificador estable ("meta", "google", "act_…", "632…")
+ *   - name: display ya formateado y bonito ("Meta", "Barbra — Breakfast Live")
+ *
+ * La normalización desde lo que MM realmente devuelve (sources con
+ * {name,label}; accounts con {value,label}) vive en las rutas
+ * /api/mcp/sources y /api/mcp/accounts — la UI no debería tener que
+ * conocer ese detalle.
+ */
 export interface Source {
-  id: SourceId;
-  name: SourceId;
-  displayName: string;
+  id: string;
+  name: string;
 }
 
 export interface MMAccount {
@@ -56,10 +65,10 @@ export type MMRow = Record<string, string | number>;
 // ─── Catalog ─────────────────────────────────────────────────────────
 
 export const MOCK_SOURCES: Source[] = [
-  { id: "meta", name: "meta", displayName: "Meta Ads" },
-  { id: "google", name: "google", displayName: "Google Ads" },
-  { id: "tiktok", name: "tiktok", displayName: "TikTok Ads" },
-  { id: "linkedin", name: "linkedin", displayName: "LinkedIn Ads" },
+  { id: "meta", name: "Meta" },
+  { id: "google", name: "Google" },
+  { id: "tiktok", name: "TikTok" },
+  { id: "linkedin", name: "LinkedIn" },
 ];
 
 export const MOCK_ACCOUNTS: MMAccount[] = [

@@ -30,7 +30,7 @@ export function SourcesGrid({ sources }: { sources: Source[] }) {
           />
           <div className="min-w-0">
             <div className="truncate text-[13px] font-medium text-[var(--color-fg)]">
-              {s.displayName ?? s.name}
+              {s.name}
             </div>
             <div className="font-mono text-[10px] text-[var(--color-fg-subtle)]">
               {s.id}

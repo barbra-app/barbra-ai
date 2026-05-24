@@ -202,7 +202,7 @@ export function Sidebar({
                         : "text-[var(--color-fg-muted)]"
                     )}
                   >
-                    {s.displayName ?? s.name ?? s.id}
+                    {s.name}
                   </span>
                   {active && (
                     <Check className="size-3.5 text-[var(--color-brand-spark)]" />
@@ -214,7 +214,7 @@ export function Sidebar({
 
           {selection.source && (
             <Section
-              title={`Cuentas — ${selection.source.displayName ?? selection.source.id}`}
+              title={`Cuentas — ${selection.source.name}`}
               open={accountsOpen}
               onToggle={() => setAccountsOpen((v) => !v)}
               loading={loadingAccounts}
