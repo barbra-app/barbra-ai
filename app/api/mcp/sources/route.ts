@@ -8,20 +8,25 @@ import { extractCollection, normalizeOutput } from "@/lib/mcp/normalize";
  * todo en mayúsculas ("META", "GOOGLE"), nosotros mostramos algo más
  * humano. Si MM agrega una fuente nueva que no esté aquí, caemos a
  * titlecase del label upstream.
+ *
+ * Lista basada en la doc oficial de MM:
+ * meta, google, google_analytics, linkedin, tiktok, youtube, shopify,
+ * kommo, pipedrive, gohighlevel, close, tiendanube, marketingnube
  */
 const PRETTY_SOURCE: Record<string, string> = {
   meta: "Meta",
-  google: "Google",
-  tiktok: "TikTok",
+  google: "Google Ads",
+  google_analytics: "Google Analytics",
   linkedin: "LinkedIn",
+  tiktok: "TikTok",
+  youtube: "YouTube",
   shopify: "Shopify",
-  facebook: "Facebook",
-  instagram: "Instagram",
   kommo: "Kommo",
-  hubspot: "HubSpot",
   pipedrive: "Pipedrive",
-  close: "Close",
   gohighlevel: "GoHighLevel",
+  close: "Close",
+  tiendanube: "Tiendanube",
+  marketingnube: "Marketingnube",
 };
 
 function prettyName(raw: { name?: string; label?: string }): string {

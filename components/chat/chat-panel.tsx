@@ -5,6 +5,7 @@ import { DefaultChatTransport } from "ai";
 import { useMemo, useRef, useEffect, useState } from "react";
 import { ArrowUp, Menu, SquarePen } from "lucide-react";
 import { BrandMark, Spark } from "@/components/layout/brand-mark";
+import { Markdown } from "@/components/chat/markdown";
 import { AccountsTable } from "@/components/generative/accounts-table";
 import { DataResult } from "@/components/generative/data-result";
 import { DiscoveryChips } from "@/components/generative/discovery-chips";
@@ -57,16 +58,19 @@ export function ChatPanel({
 
   function submit(text: string) {
     if (!text.trim() || status === "streaming") return;
-    // Pasa la selección del sidebar como contexto para que Claude no tenga
-    // que volver a preguntar source/accounts en cada turno.
-    const hint = selection.source
-      ? `\n\n[Context: source=${selection.source.id}${
-          selection.accountIds.length
-            ? `, accounts=${JSON.stringify(selection.accountIds)}`
-            : ""
-        }]`
-      : "";
-    sendMessage({ text: text + hint });
+    // Pasa la selección del sidebar al server en el body. El server
+    // la inyecta en el system prompt junto con el catálogo de métricas
+    // y dimensiones válidas — así Claude no tiene que descubrirlas
+    // mid-conversation (caro y propenso a errores de nombres).
+    sendMessage(
+      { text },
+      {
+        body: {
+          source: selection.source?.id ?? null,
+          accountIds: selection.accountIds,
+        },
+      }
+    );
     setInput("");
   }
 
@@ -221,22 +225,28 @@ function Message({ message }: { message: any }) {
 function PartRenderer({ part }: { part: any }) {
   if (part.type === "text") {
     const clean = part.text.replace(/\n\n\[Context:[^\]]*\]$/, "");
-    return (
-      <p className="whitespace-pre-wrap text-[14px] leading-relaxed text-[var(--color-fg)]">
-        {clean}
-      </p>
-    );
+    return <Markdown>{clean}</Markdown>;
   }
 
+  // En AI SDK v6, las tools estáticas (definidas en la app) llegan como
+  // type: "tool-<nombre>", pero las tools del MCP — que es nuestro caso
+  // 100% — llegan como type: "dynamic-tool" con el nombre en toolName.
+  // Tenemos que manejar ambos formatos.
+  let toolName: string | null = null;
   if (typeof part.type === "string" && part.type.startsWith("tool-")) {
-    const toolName = part.type.replace("tool-", "");
+    toolName = part.type.replace("tool-", "");
+  } else if (part.type === "dynamic-tool" && typeof part.toolName === "string") {
+    toolName = part.toolName;
+  }
+
+  if (toolName) {
     if (part.state === "input-streaming" || part.state === "input-available") {
       return <ToolPending name={toolName} />;
     }
     if (part.state === "output-error") {
       return (
         <div className="my-2 rounded-[10px] border border-red-500/30 bg-red-500/5 px-3 py-2 text-[12px] text-red-400">
-          Error de herramienta: {String(part.errorText ?? "desconocido")}
+          Error de herramienta {toolName}: {String(part.errorText ?? "desconocido")}
         </div>
       );
     }

@@ -278,7 +278,7 @@ export function Sidebar({
           <div className="flex items-center justify-between px-1 text-[10px] text-[var(--color-fg-subtle)]">
             <span>Barbra · v0.1</span>
             <span className="rounded-full bg-[var(--color-brand-cta)]/15 px-2 py-0.5 font-medium uppercase tracking-wider text-[var(--color-brand-cta)]">
-              Opus 4.7
+              Sonnet 4.6
             </span>
           </div>
         </div>
