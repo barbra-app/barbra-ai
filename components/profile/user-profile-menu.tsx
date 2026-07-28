@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { Building2, Check, LogOut, ShieldCheck, UserRound, X } from "lucide-react";
 import type { AppUser } from "@/lib/domain/analytics";
 import { getFirebaseAuth, isFirebaseAuthEnabled } from "@/lib/firebase/client";
@@ -14,18 +14,16 @@ interface UserProfileMenuProps {
 }
 
 export function UserProfileMenu({ user, organizationName, organizationCount, projectCount, campaignCount }: UserProfileMenuProps) {
-  const [open, setOpen] = useState(false);
-  const rootRef = useRef<HTMLDivElement>(null);
+  const rootRef = useRef<HTMLDetailsElement>(null);
   const initials = user.name.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase();
   const admin = user.role === "admin";
 
   useEffect(() => {
-    if (!open) return;
     function closeOnPointer(event: PointerEvent) {
-      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+      if (rootRef.current?.open && !rootRef.current.contains(event.target as Node)) rootRef.current.removeAttribute("open");
     }
     function closeOnEscape(event: KeyboardEvent) {
-      if (event.key === "Escape") setOpen(false);
+      if (event.key === "Escape") rootRef.current?.removeAttribute("open");
     }
     document.addEventListener("pointerdown", closeOnPointer);
     document.addEventListener("keydown", closeOnEscape);
@@ -33,34 +31,31 @@ export function UserProfileMenu({ user, organizationName, organizationCount, pro
       document.removeEventListener("pointerdown", closeOnPointer);
       document.removeEventListener("keydown", closeOnEscape);
     };
-  }, [open]);
+  }, []);
 
   async function signOut() {
     if (!isFirebaseAuthEnabled()) return;
     await getFirebaseAuth().signOut();
-    setOpen(false);
+    rootRef.current?.removeAttribute("open");
   }
 
   return (
-    <div className="profile-menu-root" ref={rootRef}>
-      <button
+    <details className="profile-menu-root" ref={rootRef}>
+      <summary
         className="user-avatar"
-        onClick={() => setOpen((value) => !value)}
         aria-label={`Abrir perfil de ${user.name}`}
-        aria-expanded={open}
         aria-controls="user-profile-panel"
       >
         {initials}
-      </button>
+      </summary>
 
-      {open && (
-        <section className="profile-panel" id="user-profile-panel" aria-label="Perfil de usuario">
+      <section className="profile-panel" id="user-profile-panel" aria-label="Perfil de usuario">
           <header className="profile-header">
             <div className="profile-identity">
               <span className="profile-avatar">{initials}</span>
               <div><strong>{user.name}</strong><span>{user.email || "Cuenta Barbra"}</span></div>
             </div>
-            <button onClick={() => setOpen(false)} aria-label="Cerrar perfil"><X className="size-4" /></button>
+            <button onClick={() => rootRef.current?.removeAttribute("open")} aria-label="Cerrar perfil"><X className="size-4" /></button>
           </header>
 
           <div className="profile-role">
@@ -85,8 +80,7 @@ export function UserProfileMenu({ user, organizationName, organizationCount, pro
           ) : (
             <p className="profile-demo-note">Perfil de demostración</p>
           )}
-        </section>
-      )}
-    </div>
+      </section>
+    </details>
   );
 }
