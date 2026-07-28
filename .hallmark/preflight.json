@@ -1,0 +1,14 @@
+{
+  "scanned_at": "2026-07-28",
+  "source_mtimes": {
+    "package.json": 1785259370,
+    "app/globals.css": 1785258534
+  },
+  "font_stack": "Bricolage Grotesque display + Inter UI via next/font",
+  "palette": "Warm light surfaces with royal-blue and sun-yellow brand anchors",
+  "motion": "motion-cut; no animation library",
+  "spacing": "Existing compact dashboard spacing; Hallmark will formalize a 4px token scale",
+  "framework": "Next.js 16 App Router via vinext/Sites",
+  "preserve": ["Firebase/data behavior", "organization-project-campaign hierarchy", "Barbra blue/yellow anchors", "Bricolage Grotesque + Inter"],
+  "introduce": ["minimal information hierarchy", "collapsible right advisor", "locked tokens", "responsive interaction discipline"]
+}

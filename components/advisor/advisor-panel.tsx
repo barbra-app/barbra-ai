@@ -3,7 +3,7 @@
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowUp, Bot, ChevronRight, CircleAlert, Lightbulb, RefreshCw, Sparkles } from "lucide-react";
+import { ArrowUp, ChevronRight, CircleAlert, Lightbulb, RefreshCw, Sparkles, X } from "lucide-react";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Markdown } from "@/components/chat/markdown";
 import type { DashboardSnapshot } from "@/lib/domain/analytics";
@@ -17,7 +17,7 @@ const QUESTIONS = [
   "Compara la eficiencia entre canales",
 ];
 
-export function AdvisorPanel({ snapshot }: { snapshot: DashboardSnapshot }) {
+export function AdvisorPanel({ snapshot, onClose }: { snapshot: DashboardSnapshot; onClose: () => void }) {
   const transport = useMemo(() => new DefaultChatTransport({ api: "/api/chat" }), []);
   const { messages, sendMessage, setMessages, status } = useChat({ transport });
   const [input, setInput] = useState("");
@@ -46,15 +46,16 @@ export function AdvisorPanel({ snapshot }: { snapshot: DashboardSnapshot }) {
   }
 
   return (
-    <aside className="advisor-panel">
+    <aside className="advisor-panel" id="advisor-panel" aria-label="AI Advisor">
       <header className="advisor-header">
         <div className="advisor-title">
           <span className="advisor-icon"><Sparkles className="size-4" /></span>
-          <div><strong>AI Advisor</strong><span>Analiza el contexto seleccionado</span></div>
+          <div><strong>AI Advisor</strong><span>Contexto seleccionado</span></div>
         </div>
-        <button onClick={() => setMessages([])} disabled={!messages.length || busy} aria-label="Reiniciar conversación">
-          <RefreshCw className="size-4" />
-        </button>
+        <div className="advisor-header-actions">
+          <button onClick={() => setMessages([])} disabled={!messages.length || busy} aria-label="Reiniciar conversación"><RefreshCw className="size-4" /></button>
+          <button onClick={onClose} aria-label="Cerrar AI Advisor"><X className="size-4" /></button>
+        </div>
       </header>
 
       <div className="advisor-context">
@@ -76,7 +77,9 @@ export function AdvisorPanel({ snapshot }: { snapshot: DashboardSnapshot }) {
       </div>
 
       <form className="advisor-composer" onSubmit={(event) => { event.preventDefault(); submit(input); }}>
+        <label htmlFor="advisor-question">Pregunta</label>
         <textarea
+          id="advisor-question"
           rows={2}
           value={input}
           onChange={(event) => setInput(event.target.value)}
@@ -99,33 +102,18 @@ function AdvisorHome({ snapshot, onAsk }: { snapshot: DashboardSnapshot; onAsk: 
   return (
     <div className="advisor-home">
       <div className="advisor-greeting">
-        <span><Bot className="size-5" /></span>
-        <div><strong>Ya revisé el panorama.</strong><p>Encontré {snapshot.insights.length} señales que vale la pena mirar.</p></div>
+        <strong>Listo para profundizar.</strong>
+        <p>{snapshot.insights.length} señales detectadas en este periodo.</p>
       </div>
 
       {primary && (
         <div className={`insight-hero ${primary.tone}`}>
-          <div className="insight-label"><Lightbulb className="size-3.5" /> Oportunidad principal</div>
+          <div className="insight-label"><Lightbulb className="size-3.5" /> Señal principal</div>
           <strong>{primary.title}</strong>
           <p>{primary.summary}</p>
           <div><b>{primary.metric}</b><span>{primary.action}</span></div>
         </div>
       )}
-
-      <div className="advisor-mini-chart">
-        <div className="mini-chart-head"><strong>ROAS por campaña</strong><span>Top {Math.min(snapshot.campaigns.length, 4)}</span></div>
-        <div className="h-32">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={snapshot.campaigns.slice(0, 4)} layout="vertical" margin={{ top: 2, right: 8, left: 0, bottom: 0 }}>
-              <XAxis type="number" hide domain={[0, "dataMax"]} />
-              <YAxis type="category" dataKey="name" hide />
-              <Tooltip cursor={{ fill: "rgba(33,66,255,.05)" }} contentStyle={{ borderRadius: 10, border: "1px solid #e7e5df", fontSize: 11 }} formatter={(value) => [`${Number(value).toFixed(2)}×`, "ROAS"]} />
-              <Bar dataKey="roas" fill="var(--color-brand-cta)" radius={[0, 6, 6, 0]} barSize={12} />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-        <div className="mini-chart-legend">{snapshot.campaigns.slice(0, 3).map((campaign) => <span key={campaign.id}>{campaign.name}</span>)}</div>
-      </div>
 
       <div className="question-list">
         <span>Preguntas sugeridas</span>
@@ -176,11 +164,11 @@ function SnapshotAnswer({ snapshot }: { snapshot: DashboardSnapshot }) {
       <div className="h-32">
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={snapshot.trend?.slice(-8) ?? []} margin={{ top: 8, right: 0, left: -28, bottom: 0 }}>
-            <CartesianGrid stroke="#eceae4" vertical={false} />
-            <XAxis dataKey="date" tick={{ fontSize: 9 }} tickFormatter={(value) => String(value).slice(5)} axisLine={false} tickLine={false} />
-            <YAxis tick={{ fontSize: 9 }} tickFormatter={(value) => `${Math.round(Number(value) / 1000000)}M`} axisLine={false} tickLine={false} />
-            <Tooltip contentStyle={{ borderRadius: 10, border: "1px solid #e7e5df", fontSize: 11 }} formatter={(value) => formatCurrency(Number(value), snapshot.currency)} />
-            <Bar dataKey="spend" fill="var(--color-brand-cta)" radius={[4, 4, 0, 0]} />
+            <CartesianGrid stroke="var(--color-rule)" vertical={false} />
+            <XAxis dataKey="date" tick={{ fontSize: 11, fill: "var(--color-muted)" }} tickFormatter={(value) => String(value).slice(5)} axisLine={false} tickLine={false} />
+            <YAxis tick={{ fontSize: 11, fill: "var(--color-muted)" }} tickFormatter={(value) => `${Math.round(Number(value) / 1000000)}M`} axisLine={false} tickLine={false} />
+            <Tooltip contentStyle={{ borderRadius: 10, border: "1px solid var(--color-rule)", fontSize: 12 }} formatter={(value) => formatCurrency(Number(value), snapshot.currency)} />
+            <Bar dataKey="spend" fill="var(--color-accent)" radius={[4, 4, 0, 0]} />
           </BarChart>
         </ResponsiveContainer>
       </div>

@@ -1,11 +1,11 @@
 import type { Metadata, Viewport } from "next";
-import { Bricolage_Grotesque, Inter } from "next/font/google";
+import { Inter, Space_Grotesk } from "next/font/google";
 import { headers } from "next/headers";
 import "./globals.css";
 
-const bricolage = Bricolage_Grotesque({
+const spaceGrotesk = Space_Grotesk({
   subsets: ["latin"],
-  variable: "--font-bricolage",
+  variable: "--font-space",
   display: "swap",
 });
 
@@ -40,7 +40,7 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover", // habilita env(safe-area-inset-*) para iOS notch
-  themeColor: "#f2f0eb",
+  themeColor: "#f5f1e9",
 };
 
 export default function RootLayout({
@@ -49,8 +49,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="es" className={`${bricolage.variable} ${inter.variable}`}>
-      <body className="min-h-dvh bg-[var(--color-bg)] text-[var(--color-fg)] antialiased">
+    <html lang="es" className={`${spaceGrotesk.variable} ${inter.variable}`}>
+      <body className="min-h-dvh antialiased">
         {children}
       </body>
     </html>
