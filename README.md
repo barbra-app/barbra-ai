@@ -31,6 +31,8 @@ flowchart LR
 
 Firestore guarda identidad, membresías y catálogo. BigQuery es la fuente de verdad analítica. La IA nunca recibe permiso para generar SQL libre: usa herramientas con organización, proyecto, campaña y rango ya delimitados.
 
+Durante el demo sin Firestore, Firebase Authentication usa el claim firmado `barbra` como perfil (`role`, `organizationId`, `projectIds`). Cuando Firestore esté disponible, el servidor conserva compatibilidad con documentos `users/{uid}`.
+
 ## Desarrollo local
 
 ```bash

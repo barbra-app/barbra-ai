@@ -1,17 +1,16 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
-import { GoogleAuthProvider, onAuthStateChanged, signInWithPopup, type User } from "firebase/auth";
-import { ArrowRight, LoaderCircle, ShieldCheck } from "lucide-react";
-import { Spark } from "@/components/layout/brand-mark";
+import { useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { onAuthStateChanged, signInWithEmailAndPassword, type User } from "firebase/auth";
+import { ArrowRight, LoaderCircle, LockKeyhole } from "lucide-react";
 import { getFirebaseAuth, isFirebaseAuthEnabled } from "@/lib/firebase/client";
+
+type LoginMethod = "email" | null;
 
 export function AuthGate({ children }: { children: ReactNode }) {
   const configured = isFirebaseAuthEnabled();
   const [user, setUser] = useState<User | null>(null);
   const [ready, setReady] = useState(!configured);
-  const [signingIn, setSigningIn] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!configured) return;
@@ -27,34 +26,62 @@ export function AuthGate({ children }: { children: ReactNode }) {
 
   if (!configured || user) return children;
 
-  async function login() {
-    setSigningIn(true);
+  return <LoginScreen />;
+}
+
+function LoginScreen() {
+  const [method, setMethod] = useState<LoginMethod>(null);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
+  async function loginWithEmail(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!email.trim() || !password) return;
+    setMethod("email");
     setError(null);
     try {
-      const provider = new GoogleAuthProvider();
-      provider.setCustomParameters({ prompt: "select_account" });
-      await signInWithPopup(getFirebaseAuth(), provider);
+      await signInWithEmailAndPassword(getFirebaseAuth(), email.trim(), password);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "No fue posible iniciar sesión");
+      setError(authError(reason));
     } finally {
-      setSigningIn(false);
+      setMethod(null);
     }
   }
 
   return (
     <main className="auth-screen">
-      <section className="auth-card">
-        <span className="auth-mark"><Spark className="size-7" /></span>
-        <span className="auth-kicker"><ShieldCheck className="size-3.5" /> Acceso seguro</span>
-        <h1>Tu inteligencia de medios, en un solo lugar.</h1>
-        <p>Ingresa con tu cuenta autorizada para ver únicamente las organizaciones, proyectos y campañas que te corresponden.</p>
-        <button onClick={login} disabled={signingIn}>
-          {signingIn ? <LoaderCircle className="size-4 animate-spin" /> : <span className="google-dot">G</span>}
-          Continuar con Google
-          {!signingIn && <ArrowRight className="size-4" />}
-        </button>
-        {error && <small>{error}</small>}
+      <section className="auth-card" aria-labelledby="auth-title">
+        <img className="auth-logo" src="/barbra-logo.png" width="158" height="25" alt="Barbra" />
+        <span className="auth-kicker"><LockKeyhole className="size-3.5" /> Acceso privado</span>
+        <h1 id="auth-title">Barbra Intelligence</h1>
+        <p>Ingresa para consultar únicamente las organizaciones, proyectos y campañas asignadas a tu perfil.</p>
+
+        <form className="auth-form" onSubmit={loginWithEmail}>
+          <label className="auth-field" htmlFor="auth-email">
+            <span>Correo</span>
+            <input id="auth-email" name="email" type="email" autoComplete="email" value={email} onChange={(event) => { setEmail(event.target.value); setError(null); }} aria-invalid={Boolean(error)} disabled={method !== null} required />
+          </label>
+          <label className="auth-field" htmlFor="auth-password">
+            <span>Contraseña</span>
+            <input id="auth-password" name="password" type="password" autoComplete="current-password" value={password} onChange={(event) => { setPassword(event.target.value); setError(null); }} aria-invalid={Boolean(error)} disabled={method !== null} required />
+          </label>
+          <button className="auth-submit" type="submit" disabled={method !== null || !email.trim() || !password}>
+            {method === "email" ? <LoaderCircle className="size-4 animate-spin" /> : <span />}
+            Ingresar
+            {method !== "email" && <ArrowRight className="size-4" />}
+          </button>
+        </form>
+
+        <small className={error ? "auth-error" : "auth-helper"} aria-live="polite">{error ?? "Usa una cuenta autorizada por Barbra."}</small>
       </section>
     </main>
   );
+}
+
+function authError(reason: unknown) {
+  const code = reason && typeof reason === "object" && "code" in reason ? String(reason.code) : "";
+  if (code.includes("invalid-credential") || code.includes("wrong-password") || code.includes("user-not-found")) return "Correo o contraseña incorrectos.";
+  if (code.includes("too-many-requests")) return "Demasiados intentos. Intenta nuevamente más tarde.";
+  return "No fue posible iniciar sesión. Intenta nuevamente.";
 }

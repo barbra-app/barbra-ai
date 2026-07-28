@@ -19,7 +19,7 @@ export function isFirebaseClientConfigured() {
 }
 
 export function isFirebaseAuthEnabled() {
-  return isFirebaseClientConfigured() && process.env.NEXT_PUBLIC_ENABLE_FIREBASE_AUTH === "true";
+  return isFirebaseClientConfigured() && process.env.NEXT_PUBLIC_ENABLE_FIREBASE_AUTH !== "false";
 }
 
 export function getFirebaseApp(): FirebaseApp {

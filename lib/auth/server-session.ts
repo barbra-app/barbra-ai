@@ -1,4 +1,5 @@
 import { DEMO_USER, type AppUser } from "@/lib/domain/analytics";
+import { verifyFirebaseIdToken } from "@/lib/firebase/id-token";
 
 function bearerToken(request: Request) {
   const header = request.headers.get("authorization");
@@ -13,8 +14,23 @@ export async function getRequestUser(request: Request): Promise<AppUser> {
     return DEMO_USER;
   }
 
-  const { getFirebaseAdminAuth, getFirebaseAdminFirestore } = await import("@/lib/firebase/admin");
-  const decoded = await getFirebaseAdminAuth().verifyIdToken(token);
+  const decoded = await verifyFirebaseIdToken(token);
+  const claim = decoded.barbra && typeof decoded.barbra === "object" ? decoded.barbra as Record<string, unknown> : null;
+  if (claim) {
+    const role = claim.role === "admin" ? "admin" : "user";
+    const organizationId = typeof claim.organizationId === "string" ? claim.organizationId : null;
+    const projectIds = Array.isArray(claim.projectIds) ? claim.projectIds.map(String) : [];
+    return {
+      uid: decoded.uid,
+      name: String(claim.name ?? decoded.name ?? decoded.email ?? "Usuario"),
+      email: String(decoded.email ?? ""),
+      role,
+      organizationId,
+      organizationIds: organizationId ? [organizationId] : [],
+      projectIds,
+    };
+  }
+  const { getFirebaseAdminFirestore } = await import("@/lib/firebase/admin");
   const document = await getFirebaseAdminFirestore().collection("users").doc(decoded.uid).get();
   if (!document.exists) throw new Error("USER_PROFILE_NOT_FOUND");
   const profile = document.data() ?? {};
