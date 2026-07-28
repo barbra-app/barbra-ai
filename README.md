@@ -1,6 +1,6 @@
 # Barbra Intelligence
 
-Plataforma multi-organización de inteligencia de medios. Combina un dashboard ejecutivo con un AI Advisor que consulta datos verificados y devuelve componentes visuales, no solamente texto.
+Plataforma multi-organización de inteligencia de medios. Combina un dashboard ejecutivo con Barbra Intelligence, una experiencia contextual que consulta datos verificados y devuelve componentes visuales, no solamente texto.
 
 ## Qué está listo
 
@@ -8,7 +8,7 @@ Plataforma multi-organización de inteligencia de medios. Combina un dashboard e
 - Google Sign-In con Firebase Authentication.
 - Perfiles y permisos por proyecto en Firestore, validados también en el servidor.
 - Dashboard responsive con KPIs, tendencia, mix de canales y comparativo de campañas.
-- AI Advisor contextual con respuestas gráficas mediante tool calling.
+- Barbra Intelligence contextual con respuestas gráficas mediante tool calling.
 - Repositorio de datos intercambiable: `mock` para desarrollo y `bigquery` para producción.
 - Consultas BigQuery parametrizadas, con vista permitida por configuración y límite de bytes procesados.
 - Firebase CLI/MCP configurado a nivel del repositorio.
@@ -24,7 +24,7 @@ flowchart LR
   API --> R[Analytics Repository]
   R --> M[Mock local]
   R --> B[Vista normalizada BigQuery]
-  N --> AI[AI Advisor]
+  N --> AI[Barbra Intelligence]
   AI --> T[Tools analíticas controladas]
   T --> R
 ```
@@ -58,15 +58,16 @@ La vista configurada en `BIGQUERY_ANALYTICS_VIEW` debe exponer una fila diaria p
 | `campaign_name`, `source` | `STRING` |
 | `spend`, `impressions`, `clicks`, `conversions`, `revenue` | `NUMERIC` o compatible |
 
-Conservar este contrato permite cambiar la normalización/ELT sin modificar la UI ni el Advisor. La integración vive en `lib/data/bigquery-analytics-repository.ts`.
+Conservar este contrato permite cambiar la normalización/ELT sin modificar la UI ni Barbra Intelligence. La integración vive en `lib/data/bigquery-analytics-repository.ts`.
 
 ## Modelo Firestore
 
 ```text
 users/{uid}
-  name, email, role
-  organizationIds: string[]
-  projectIds: string[]
+  name, email
+  role: "admin" | "user"
+  organizationId: string | null // null for global admins
+  projectIds: string[] // optional project-level restriction for users
 
 organizations/{organizationId}
   name, slug

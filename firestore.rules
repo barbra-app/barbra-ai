@@ -11,11 +11,15 @@ service cloud.firestore {
     }
 
     function belongsToOrganization(organizationId) {
-      return signedIn() && organizationId in userProfile().organizationIds;
+      return signedIn() && (isAdmin()
+        || ('organizationId' in userProfile() && userProfile().organizationId == organizationId)
+        || ('organizationIds' in userProfile() && userProfile().organizationIds is list && organizationId in userProfile().organizationIds));
     }
 
     function canAccessProject(projectId) {
-      return signedIn() && projectId in userProfile().projectIds;
+      return signedIn() && (isAdmin()
+        || ('projectIds' in userProfile() && userProfile().projectIds is list && projectId in userProfile().projectIds)
+        || ('organizationId' in userProfile() && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == userProfile().organizationId));
     }
 
     function isAdmin() {

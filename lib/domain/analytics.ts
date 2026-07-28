@@ -1,6 +1,6 @@
 export type DateRangePreset = "7d" | "30d" | "90d";
 export type CampaignStatus = "active" | "paused" | "completed";
-export type MemberRole = "owner" | "admin" | "analyst" | "viewer";
+export type MemberRole = "admin" | "user";
 
 export interface Organization {
   id: string;
@@ -30,6 +30,7 @@ export interface AppUser {
   name: string;
   email: string;
   role: MemberRole;
+  organizationId: string | null;
   organizationIds: string[];
   projectIds: string[];
 }
@@ -119,7 +120,8 @@ export const DEMO_USER: AppUser = {
   uid: "demo_steve",
   name: "Steve Suárez",
   email: "steve@barbra.com.co",
-  role: "owner",
+  role: "admin",
+  organizationId: null,
   organizationIds: ["org_barbra"],
   projectIds: DEMO_PROJECTS.map((project) => project.id),
 };

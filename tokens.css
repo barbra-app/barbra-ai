@@ -56,5 +56,6 @@
   --dur-panel: 220ms;
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
   --z-topbar: 20;
+  --z-profile: 30;
   --z-advisor: 40;
 }

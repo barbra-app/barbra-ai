@@ -12,9 +12,9 @@ import { formatCurrency, formatNumber } from "@/lib/utils";
 import { getFirebaseIdToken } from "@/lib/firebase/client";
 
 const QUESTIONS = [
-  "¿Qué está explicando el cambio en ROAS?",
-  "¿Qué campaña debería escalar esta semana?",
-  "Compara la eficiencia entre canales",
+  "¿Qué explica el cambio en ROAS?",
+  "¿Qué campaña debería escalar?",
+  "Compara la eficiencia por canal",
 ];
 
 export function AdvisorPanel({ snapshot, onClose }: { snapshot: DashboardSnapshot; onClose: () => void }) {
@@ -46,15 +46,15 @@ export function AdvisorPanel({ snapshot, onClose }: { snapshot: DashboardSnapsho
   }
 
   return (
-    <aside className="advisor-panel" id="advisor-panel" aria-label="AI Advisor">
+    <aside className="advisor-panel" id="advisor-panel" aria-label="Barbra Intelligence">
       <header className="advisor-header">
         <div className="advisor-title">
           <span className="advisor-icon"><Sparkles className="size-4" /></span>
-          <div><strong>AI Advisor</strong><span>Contexto seleccionado</span></div>
+          <div><strong>Barbra Intelligence</strong><span>Contexto seleccionado</span></div>
         </div>
         <div className="advisor-header-actions">
           <button onClick={() => setMessages([])} disabled={!messages.length || busy} aria-label="Reiniciar conversación"><RefreshCw className="size-4" /></button>
-          <button onClick={onClose} aria-label="Cerrar AI Advisor"><X className="size-4" /></button>
+          <button onClick={onClose} aria-label="Cerrar Barbra Intelligence"><X className="size-4" /></button>
         </div>
       </header>
 
@@ -77,7 +77,7 @@ export function AdvisorPanel({ snapshot, onClose }: { snapshot: DashboardSnapsho
       </div>
 
       <form className="advisor-composer" onSubmit={(event) => { event.preventDefault(); submit(input); }}>
-        <label htmlFor="advisor-question">Pregunta</label>
+        <label htmlFor="advisor-question">Consulta a Barbra</label>
         <textarea
           id="advisor-question"
           rows={2}
@@ -102,7 +102,7 @@ function AdvisorHome({ snapshot, onAsk }: { snapshot: DashboardSnapshot; onAsk: 
   return (
     <div className="advisor-home">
       <div className="advisor-greeting">
-        <strong>Listo para profundizar.</strong>
+        <strong>Barbra Intelligence está lista.</strong>
         <p>{snapshot.insights.length} señales detectadas en este periodo.</p>
       </div>
 

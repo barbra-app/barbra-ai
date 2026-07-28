@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   Activity,
-  Bot,
   CalendarDays,
   ChevronDown,
   CircleDollarSign,
@@ -29,7 +28,7 @@ import {
   YAxis,
 } from "recharts";
 import { AdvisorPanel } from "@/components/advisor/advisor-panel";
-import { Spark } from "@/components/layout/brand-mark";
+import { UserProfileMenu } from "@/components/profile/user-profile-menu";
 import {
   DEMO_CAMPAIGNS,
   DEMO_ORGANIZATIONS,
@@ -73,8 +72,8 @@ export function IntelligenceDashboard() {
   });
   const [organizationId, setOrganizationId] = useState(DEMO_ORGANIZATIONS[0].id);
   const availableProjects = useMemo(
-    () => workspace.projects.filter((project) => project.organizationId === organizationId && workspace.user.projectIds.includes(project.id)),
-    [organizationId, workspace],
+    () => workspace.projects.filter((project) => project.organizationId === organizationId),
+    [organizationId, workspace.projects],
   );
   const [projectId, setProjectId] = useState(availableProjects[0].id);
   const availableCampaigns = useMemo(() => workspace.campaigns.filter((campaign) => campaign.projectId === projectId), [projectId, workspace.campaigns]);
@@ -140,14 +139,13 @@ export function IntelligenceDashboard() {
 
   const project = availableProjects.find((item) => item.id === projectId);
   const campaign = availableCampaigns.find((item) => item.id === campaignId);
-  const initials = workspace.user.name.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase();
+  const organization = workspace.organizations.find((item) => item.id === organizationId);
 
   return (
     <div className={cn("intelligence-shell", advisorOpen && "advisor-is-open")}>
       <header className="intelligence-topbar">
         <div className="brand-lockup">
-          <span className="brand-symbol"><Spark className="size-5" /></span>
-          <strong>Barbra</strong>
+          <img src="/barbra-logo.png" width="126" height="20" alt="Barbra" />
         </div>
 
         <nav className="product-nav" aria-label="Navegación principal">
@@ -159,7 +157,7 @@ export function IntelligenceDashboard() {
             aria-expanded={advisorOpen}
             aria-controls="advisor-panel"
           >
-            <Sparkles className="size-4" />Advisor
+            <Sparkles className="size-4" />Intelligence
           </button>
         </nav>
 
@@ -170,15 +168,21 @@ export function IntelligenceDashboard() {
             aria-expanded={advisorOpen}
             aria-controls="advisor-panel"
           >
-            <Bot className="size-4" /><span>Preguntar</span>
+            <Sparkles className="size-4" /><span>Consultar</span>
           </button>
-          <div className="user-avatar" aria-label={workspace.user.name}>{initials}</div>
+          <UserProfileMenu
+            user={workspace.user}
+            organizationName={organization?.name}
+            organizationCount={workspace.organizations.length}
+            projectCount={workspace.projects.length}
+            campaignCount={workspace.campaigns.length}
+          />
         </div>
       </header>
 
       <div className="workspace-bar">
         <div className="workspace-selectors">
-          <LabeledSelect label="Organización" value={organizationId} onChange={setOrganizationId} options={workspace.organizations.map((item) => ({ value: item.id, label: item.name }))} />
+          <LabeledSelect label="Organización" value={organizationId} onChange={setOrganizationId} options={workspace.organizations.map((item) => ({ value: item.id, label: item.name }))} disabled={workspace.user.role === "user"} />
           <LabeledSelect label="Proyecto" value={projectId} onChange={setProjectId} options={availableProjects.map((item) => ({ value: item.id, label: item.name }))} />
           <LabeledSelect label="Campaña" value={campaignId} onChange={setCampaignId} options={[{ value: "all", label: "Todas las campañas" }, ...availableCampaigns.map((item) => ({ value: item.id, label: item.name }))]} />
         </div>
@@ -224,12 +228,12 @@ export function IntelligenceDashboard() {
   );
 }
 
-function LabeledSelect({ label, value, onChange, options }: { label: string; value: string; onChange: (value: string) => void; options: { value: string; label: string }[] }) {
+function LabeledSelect({ label, value, onChange, options, disabled = false }: { label: string; value: string; onChange: (value: string) => void; options: { value: string; label: string }[]; disabled?: boolean }) {
   return (
     <label className="labeled-select">
       <span>{label}</span>
       <span className="select-control">
-        <select value={value} onChange={(event) => onChange(event.target.value)} aria-label={label}>
+        <select value={value} onChange={(event) => onChange(event.target.value)} aria-label={label} disabled={disabled}>
           {options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
         </select>
         <ChevronDown className="size-3.5" />

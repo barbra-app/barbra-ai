@@ -15,9 +15,18 @@ export async function GET(request: Request) {
 
     const { getFirebaseAdminFirestore } = await import("@/lib/firebase/admin");
     const db = getFirebaseAdminFirestore();
+    const admin = user.role === "admin";
+    const organizationIds = user.organizationId ? [user.organizationId] : user.organizationIds;
     const [organizationDocs, projectDocs] = await Promise.all([
-      Promise.all(user.organizationIds.map((id) => db.collection("organizations").doc(id).get())),
-      Promise.all(user.projectIds.map((id) => db.collection("projects").doc(id).get())),
+      admin
+        ? db.collection("organizations").get().then((snapshot) => snapshot.docs)
+        : Promise.all(organizationIds.map((id) => db.collection("organizations").doc(id).get())),
+      admin
+        ? db.collection("projects").get().then((snapshot) => snapshot.docs)
+        : user.projectIds.length
+          ? Promise.all(user.projectIds.map((id) => db.collection("projects").doc(id).get()))
+          : Promise.all(organizationIds.map((id) => db.collection("projects").where("organizationId", "==", id).get()))
+              .then((snapshots) => snapshots.flatMap((snapshot) => snapshot.docs)),
     ]);
     const organizations = organizationDocs.filter((doc) => doc.exists).map((doc) => ({
       id: doc.id,
