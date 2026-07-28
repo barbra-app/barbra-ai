@@ -4,6 +4,8 @@ import { fetchCatalog, formatCatalogForPrompt, type Catalog } from "@/lib/mcp/ca
 import { getMasterMetricsTools } from "@/lib/mcp/client";
 import { wrapGetData } from "@/lib/mcp/get-data-wrapper";
 import { wrapToolsWithTracing } from "@/lib/mcp/tracing";
+import { getAnalyticsTools } from "@/lib/ai/analytics-tools";
+import { assertProjectAccess, getRequestUser } from "@/lib/auth/server-session";
 
 export const maxDuration = 60;
 
@@ -19,9 +21,16 @@ function buildSystemPrompt(opts: {
   source?: string | null;
   accountIds?: string[];
   catalog?: Catalog | null;
+  organizationId?: string | null;
+  projectId?: string | null;
+  campaignId?: string | null;
 }): string {
   const today = new Date().toISOString().slice(0, 10);
-  const { isLive, source, accountIds, catalog } = opts;
+  const { isLive, source, accountIds, catalog, organizationId, projectId, campaignId } = opts;
+
+  const analyticsContext = organizationId && projectId
+    ? `\nCONTEXTO DE BARBRA INTELLIGENCE (ya seleccionado en la UI):\n  - organization_id: ${organizationId}\n  - project_id: ${projectId}\n  - campaign_id: ${campaignId ?? "todas"}\n\nHERRAMIENTAS ANALÍTICAS:\n  - get_dashboard_snapshot({ range }) → KPIs, tendencia, canales e insights verificados.\n  - get_campaign_performance({ range, limit }) → comparativo de campañas.\n  - get_channel_mix({ range }) → inversión y conversiones por canal.\n\nUsa estas herramientas para responder. No inventes cifras y no generes SQL libre. La UI renderiza los resultados como componentes visuales, por lo que tu texto debe limitarse a 1–2 observaciones accionables.\n`
+    : "";
 
   const contextBlock = source
     ? `\nCONTEXTO ACTUAL (el usuario ya eligió esto en el sidebar, úsalo directo):
@@ -31,10 +40,10 @@ function buildSystemPrompt(opts: {
 
   const catalogBlock = catalog ? formatCatalogForPrompt(source!, catalog) : "";
 
-  return `Eres Barbra — un copiloto de inteligencia de medios dentro de una agencia.
+  return `Eres Barbra — un advisor de inteligencia de medios dentro de una agencia.
 
 ⚠️ Idioma: SIEMPRE respondes en español. Nombres técnicos (métricas, dimensiones, IDs, herramientas como get_data) se quedan en su forma original.
-${contextBlock}${catalogBlock}
+${analyticsContext}${contextBlock}${catalogBlock}
 ──────────────────────────────────────────────────────────
 HERRAMIENTAS MCP DE MASTER METRICS
 ──────────────────────────────────────────────────────────
@@ -97,9 +106,30 @@ export async function POST(req: Request) {
   const messages = body.messages as UIMessage[];
   const source = (body.source as string | undefined) || null;
   const accountIds = (body.accountIds as string[] | undefined) ?? [];
+  const organizationId = (body.organizationId as string | undefined) || null;
+  const projectId = (body.projectId as string | undefined) || null;
+  const campaignId = (body.campaignId as string | undefined) || null;
+
+  if (organizationId && projectId) {
+    try {
+      const user = await getRequestUser(req);
+      assertProjectAccess(user, organizationId, projectId);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "UNAUTHENTICATED";
+      return Response.json(
+        { error: message === "FORBIDDEN" ? "Project access denied" : "Authentication required" },
+        { status: message === "FORBIDDEN" ? 403 : 401 },
+      );
+    }
+  }
 
   const tAuthStart = Date.now();
-  const { tools: rawTools, isLive } = await getMasterMetricsTools(req);
+  const { tools: masterMetricsTools, isLive: masterMetricsLive } = await getMasterMetricsTools(req);
+  const analyticsTools = organizationId && projectId
+    ? getAnalyticsTools({ organizationId, projectId, campaignId })
+    : null;
+  const rawTools = analyticsTools ?? masterMetricsTools;
+  const isLive = analyticsTools ? process.env.ANALYTICS_PROVIDER === "bigquery" : masterMetricsLive;
   // eslint-disable-next-line no-console
   console.log(
     `[trace] +${Date.now() - requestStart}ms tools resolved (${Date.now() - tAuthStart}ms, ${Object.keys(rawTools).length} tools, live=${isLive}, source=${source ?? "—"}, model=${MODEL_ID})`
@@ -117,7 +147,7 @@ export async function POST(req: Request) {
     const tCatStart = Date.now();
     try {
       catalog = await fetchCatalog(
-        rawTools as Record<string, any>,
+        masterMetricsTools as Record<string, any>,
         source,
         accountIds.length > 0 ? accountIds : undefined
       );
@@ -157,7 +187,7 @@ export async function POST(req: Request) {
   // Crítico porque en un turno con tool use, Anthropic recibe el system
   // prompt N veces (una por step). Sin cache: 4.5K × 3 steps = 13.5K
   // tokens. Con cache: 4.5K + (200 × 2) ≈ 5K tokens.
-  const systemPrompt = buildSystemPrompt({ isLive, source, accountIds, catalog });
+  const systemPrompt = buildSystemPrompt({ isLive, source, accountIds, catalog, organizationId, projectId, campaignId });
   const userMessages = await convertToModelMessages(messages);
 
   const result = streamText({
