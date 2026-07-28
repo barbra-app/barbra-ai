@@ -9,8 +9,8 @@ export function getAnalyticsTools(context: {
   campaignId?: string | null;
 }) {
   const rangeSchema = z.enum(["7d", "30d", "90d"]).default("30d");
-  const snapshot = (range: DateRangePreset, campaignId?: string | null) =>
-    getAnalyticsRepository().getDashboard({ ...context, campaignId: campaignId ?? context.campaignId, range });
+  const snapshot = async (range: DateRangePreset, campaignId?: string | null) =>
+    (await getAnalyticsRepository()).getDashboard({ ...context, campaignId: campaignId ?? context.campaignId, range });
 
   return {
     get_dashboard_snapshot: tool({

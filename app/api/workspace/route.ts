@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { getRequestUser } from "@/lib/auth/server-session";
-import { getFirebaseAdminFirestore } from "@/lib/firebase/admin";
 import { DEMO_CAMPAIGNS, DEMO_ORGANIZATIONS, DEMO_PROJECTS, DEMO_USER } from "@/lib/domain/analytics";
 
 export const dynamic = "force-dynamic";
@@ -14,6 +13,7 @@ export async function GET(request: Request) {
     const user = await getRequestUser(request);
     if (!request.headers.get("authorization")) return NextResponse.json({ data: demoWorkspace(), mode: "demo" });
 
+    const { getFirebaseAdminFirestore } = await import("@/lib/firebase/admin");
     const db = getFirebaseAdminFirestore();
     const [organizationDocs, projectDocs] = await Promise.all([
       Promise.all(user.organizationIds.map((id) => db.collection("organizations").doc(id).get())),

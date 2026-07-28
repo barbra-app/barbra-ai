@@ -1,9 +1,10 @@
 import type { AnalyticsRepository } from "@/lib/data/analytics-repository";
-import { BigQueryAnalyticsRepository } from "@/lib/data/bigquery-analytics-repository";
-import { MockAnalyticsRepository } from "@/lib/data/mock-analytics-repository";
 
-export function getAnalyticsRepository(): AnalyticsRepository {
-  return process.env.ANALYTICS_PROVIDER === "bigquery"
-    ? new BigQueryAnalyticsRepository()
-    : new MockAnalyticsRepository();
+export async function getAnalyticsRepository(): Promise<AnalyticsRepository> {
+  if (process.env.ANALYTICS_PROVIDER === "bigquery") {
+    const { BigQueryAnalyticsRepository } = await import("@/lib/data/bigquery-analytics-repository");
+    return new BigQueryAnalyticsRepository();
+  }
+  const { MockAnalyticsRepository } = await import("@/lib/data/mock-analytics-repository");
+  return new MockAnalyticsRepository();
 }

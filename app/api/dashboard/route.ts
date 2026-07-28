@@ -28,7 +28,7 @@ export async function GET(request: Request) {
   try {
     const user = await getRequestUser(request);
     assertProjectAccess(user, parsed.data.organizationId, parsed.data.projectId);
-    const data = await getAnalyticsRepository().getDashboard(parsed.data);
+    const data = await (await getAnalyticsRepository()).getDashboard(parsed.data);
     return NextResponse.json({ data, provider: process.env.ANALYTICS_PROVIDER ?? "mock", user: { uid: user.uid, name: user.name, role: user.role } });
   } catch (error) {
     if (error instanceof Error && error.message === "UNAUTHENTICATED") {

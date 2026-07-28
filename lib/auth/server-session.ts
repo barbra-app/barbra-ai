@@ -1,5 +1,4 @@
 import { DEMO_USER, type AppUser } from "@/lib/domain/analytics";
-import { getFirebaseAdminAuth, getFirebaseAdminFirestore } from "@/lib/firebase/admin";
 
 function bearerToken(request: Request) {
   const header = request.headers.get("authorization");
@@ -14,6 +13,7 @@ export async function getRequestUser(request: Request): Promise<AppUser> {
     return DEMO_USER;
   }
 
+  const { getFirebaseAdminAuth, getFirebaseAdminFirestore } = await import("@/lib/firebase/admin");
   const decoded = await getFirebaseAdminAuth().verifyIdToken(token);
   const document = await getFirebaseAdminFirestore().collection("users").doc(decoded.uid).get();
   if (!document.exists) throw new Error("USER_PROFILE_NOT_FOUND");
