@@ -1,4 +1,5 @@
-/* Hallmark · tokens: Cobalt/Barbra · OKLCH-only color system */
+/* Hallmark · pre-emit critique: P5 H5 E5 S5 R5 V4 */
+/* Hallmark · tokens: Monochrome/Barbra · warm-black OKLCH system */
 :root {
   --color-paper: oklch(97.8% 0.008 84);
   --color-paper-deep: oklch(94.8% 0.012 82);
@@ -10,22 +11,23 @@
   --color-subtle: oklch(62% 0.01 75);
   --color-rule: oklch(89% 0.012 78);
   --color-rule-strong: oklch(82% 0.014 78);
-  --color-accent: oklch(51% 0.245 270);
-  --color-accent-hover: oklch(45% 0.235 270);
-  --color-accent-soft: oklch(95% 0.035 270);
-  --color-accent-ink: oklch(99% 0.006 270);
-  --color-signal: oklch(86% 0.155 91);
-  --color-signal-strong: oklch(62% 0.14 83);
-  --color-signal-soft: oklch(96% 0.045 91);
-  --color-positive: oklch(49% 0.135 158);
-  --color-positive-soft: oklch(95% 0.035 158);
-  --color-negative: oklch(54% 0.19 27);
-  --color-negative-soft: oklch(95% 0.035 27);
-  --color-focus: oklch(27% 0.04 270);
-  --color-chart-1: oklch(51% 0.245 270);
-  --color-chart-2: oklch(70% 0.17 82);
-  --color-chart-3: oklch(56% 0.135 198);
-  --color-chart-4: oklch(63% 0.14 326);
+  --color-accent: oklch(20% 0.012 80);
+  --color-accent-hover: oklch(32% 0.01 80);
+  --color-accent-soft: oklch(93% 0.008 80);
+  --color-accent-ink: oklch(99% 0.002 80);
+  --color-signal: oklch(82% 0.009 80);
+  --color-signal-strong: oklch(38% 0.01 80);
+  --color-signal-soft: oklch(95% 0.007 80);
+  --color-positive: oklch(30% 0.01 80);
+  --color-positive-soft: oklch(94% 0.007 80);
+  --color-negative: oklch(38% 0.012 80);
+  --color-negative-soft: oklch(91% 0.008 80);
+  --color-focus: oklch(20% 0.012 80);
+  --color-chart-1: oklch(20% 0.012 80);
+  --color-chart-2: oklch(36% 0.01 80);
+  --color-chart-3: oklch(52% 0.009 80);
+  --color-chart-4: oklch(68% 0.008 80);
+  --color-chart-5: oklch(82% 0.007 80);
 
   --font-display: var(--font-space), "Helvetica Neue", sans-serif;
   --font-body: var(--font-inter), "Helvetica Neue", sans-serif;

@@ -14,7 +14,13 @@ import type {
 } from "@/lib/domain/analytics";
 
 const RANGE_DAYS = { "7d": 7, "30d": 30, "90d": 90 } as const;
-const CHANNEL_COLORS = ["#2142ff", "#f5c842", "#00989b", "#b45eb3", "#f97316"];
+const CHANNEL_COLORS = [
+  "var(--color-chart-1)",
+  "var(--color-chart-2)",
+  "var(--color-chart-3)",
+  "var(--color-chart-4)",
+  "var(--color-chart-5)",
+];
 
 interface CanonicalRow {
   date: unknown;

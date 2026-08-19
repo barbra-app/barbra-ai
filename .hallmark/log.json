@@ -2,6 +2,15 @@
   {
     "date": "2026-08-19",
     "macrostructure": "Workbench",
+    "theme": "Barbra monochrome identity",
+    "genre": "modern-minimal",
+    "enrichment": "none",
+    "navigation": "existing application chrome preserved",
+    "brief": "Replace the blue application accent and multicolor charts with a warm black-and-white system."
+  },
+  {
+    "date": "2026-08-19",
+    "macrostructure": "Workbench",
     "theme": "studied-DNA from the user reference image, adapted to Barbra",
     "genre": "modern-minimal",
     "enrichment": "none",

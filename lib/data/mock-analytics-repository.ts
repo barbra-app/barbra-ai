@@ -100,10 +100,10 @@ export class MockAnalyticsRepository implements AnalyticsRepository {
       ],
       trend: buildTrend(query, factor),
       channelMix: [
-        { channel: "Meta", spend: spend * 0.48, conversions: round(conversions * 0.42), color: "#2142ff" },
-        { channel: "Google", spend: spend * 0.34, conversions: round(conversions * 0.41), color: "#f5c842" },
-        { channel: "TikTok", spend: spend * 0.12, conversions: round(conversions * 0.1), color: "#9dd89c" },
-        { channel: "LinkedIn", spend: spend * 0.06, conversions: round(conversions * 0.07), color: "#f97316" },
+        { channel: "Meta", spend: spend * 0.48, conversions: round(conversions * 0.42), color: "var(--color-chart-1)" },
+        { channel: "Google", spend: spend * 0.34, conversions: round(conversions * 0.41), color: "var(--color-chart-2)" },
+        { channel: "TikTok", spend: spend * 0.12, conversions: round(conversions * 0.1), color: "var(--color-chart-3)" },
+        { channel: "LinkedIn", spend: spend * 0.06, conversions: round(conversions * 0.07), color: "var(--color-chart-4)" },
       ],
       campaigns,
       insights: [
