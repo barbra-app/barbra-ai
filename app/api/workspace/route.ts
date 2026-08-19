@@ -25,7 +25,8 @@ export async function GET(request: Request) {
     }
 
     const { getFirestoreDocument, listFirestoreDocuments, queryFirestoreDocuments } = await import("@/lib/firebase/firestore-rest");
-    const firebaseIdToken = requestBearerToken(request) ?? undefined;
+    const useServiceAccount = await runtimeEnv("FIRESTORE_USE_SERVICE_ACCOUNT") === "true";
+    const firebaseIdToken = useServiceAccount ? undefined : requestBearerToken(request) ?? undefined;
     const admin = user.role === "admin";
     const organizationIds = user.organizationId ? [user.organizationId] : user.organizationIds;
     const [organizationDocs, projectDocs] = await Promise.all([

@@ -20,7 +20,8 @@ export async function getRequestUser(request: Request): Promise<AppUser> {
   // can remain stale after an administrator changes a user's role or scope,
   // so use them only as a fallback for legacy provisioned accounts.
   const { getFirestoreDocument } = await import("@/lib/firebase/firestore-rest");
-  const document = await getFirestoreDocument("users", decoded.uid, token);
+  const useServiceAccount = await runtimeEnv("FIRESTORE_USE_SERVICE_ACCOUNT") === "true";
+  const document = await getFirestoreDocument("users", decoded.uid, useServiceAccount ? undefined : token);
   if (document.exists) {
     const profile = document.data;
     const role = profile.role === "admin" || profile.role === "owner" ? "admin" : "user";

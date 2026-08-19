@@ -61,9 +61,10 @@ export async function POST(request: Request) {
     );
   }
 
+  const useServiceAccount = await runtimeEnv("FIRESTORE_USE_SERVICE_ACCOUNT") === "true";
   const tools = getAnalyticsTools(
     { organizationId, projectId, campaignId },
-    { firestoreToken: requestBearerToken(request) ?? undefined },
+    { firestoreToken: useServiceAccount ? undefined : requestBearerToken(request) ?? undefined },
   );
   const anthropicApiKey = await runtimeEnv("ANTHROPIC_API_KEY");
   if (!anthropicApiKey) {

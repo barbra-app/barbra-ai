@@ -29,8 +29,9 @@ export async function GET(request: Request) {
   try {
     const user = await getRequestUser(request);
     assertProjectAccess(user, parsed.data.organizationId, parsed.data.projectId);
+    const useServiceAccount = await runtimeEnv("FIRESTORE_USE_SERVICE_ACCOUNT") === "true";
     const data = await (await getAnalyticsRepository()).getDashboard(parsed.data, {
-      firestoreToken: requestBearerToken(request) ?? undefined,
+      firestoreToken: useServiceAccount ? undefined : requestBearerToken(request) ?? undefined,
     });
     return NextResponse.json({ data, provider: (await runtimeEnv("ANALYTICS_PROVIDER")) ?? "mock", user: { uid: user.uid, name: user.name, role: user.role } });
   } catch (error) {

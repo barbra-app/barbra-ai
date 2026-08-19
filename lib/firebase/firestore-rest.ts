@@ -8,7 +8,12 @@ export interface FirestoreDocument {
 }
 
 async function accessToken() {
-  const raw = await runtimeEnv("FIREBASE_SERVICE_ACCOUNT_JSON");
+  let raw = await runtimeEnv("FIREBASE_SERVICE_ACCOUNT_JSON");
+  const file = await runtimeEnv("FIREBASE_SERVICE_ACCOUNT_FILE");
+  if (!raw && file) {
+    const { readFile } = await import("node:fs/promises");
+    raw = await readFile(file, "utf8");
+  }
   return googleAccessToken("https://www.googleapis.com/auth/datastore", raw);
 }
 
