@@ -1,26 +1,10 @@
 import { runtimeEnv } from "@/lib/runtime-env";
 import { googleAccessToken } from "@/lib/google/access-token";
 
-interface ServiceAccount {
-  client_email: string;
-  private_key: string;
-  project_id?: string;
-}
-
 export interface FirestoreDocument {
   id: string;
   exists: boolean;
   data: Record<string, unknown>;
-}
-
-async function serviceAccount() {
-  const raw = await runtimeEnv("FIREBASE_SERVICE_ACCOUNT_JSON");
-  if (!raw) return null;
-  const account = !raw.trim().startsWith("{")
-    ? { client_email: (await runtimeEnv("GOOGLE_SERVICE_ACCOUNT_EMAIL")) ?? "", private_key: raw, project_id: undefined }
-    : JSON.parse(raw) as ServiceAccount;
-  if (!account.client_email || !account.private_key) throw new Error("FIREBASE_SERVICE_ACCOUNT_JSON_INVALID");
-  return account;
 }
 
 async function accessToken() {
@@ -29,8 +13,7 @@ async function accessToken() {
 }
 
 async function baseUrl() {
-  const account = await serviceAccount();
-  const projectId = (await runtimeEnv("FIREBASE_PROJECT_ID")) ?? account?.project_id ?? (await runtimeEnv("GCP_PROJECT_ID"));
+  const projectId = (await runtimeEnv("FIREBASE_PROJECT_ID")) ?? (await runtimeEnv("GCP_PROJECT_ID"));
   if (!projectId) throw new Error("FIREBASE_PROJECT_ID_MISSING");
   return `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents`;
 }

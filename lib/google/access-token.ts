@@ -6,6 +6,21 @@ interface ServiceAccount {
   private_key: string;
 }
 
+async function parseServiceAccount(raw: string): Promise<ServiceAccount> {
+  const trimmed = raw.trim();
+  if (trimmed.startsWith("{")) return JSON.parse(trimmed) as ServiceAccount;
+  let privateKey = trimmed;
+  if (privateKey.startsWith('"')) {
+    privateKey = JSON.parse(privateKey) as string;
+  }
+  privateKey = privateKey.replace(/\\n/g, "\n");
+  const pem = privateKey.match(/-----BEGIN PRIVATE KEY-----[\s\S]+?-----END PRIVATE KEY-----/)?.[0] ?? privateKey;
+  return {
+    client_email: (await runtimeEnv("GOOGLE_SERVICE_ACCOUNT_EMAIL")) ?? "",
+    private_key: pem,
+  };
+}
+
 const tokenCache = new Map<string, { token: string; expiresAt: number }>();
 
 export async function googleAccessToken(scope: string, credentialsJson?: string) {
@@ -19,9 +34,7 @@ export async function googleAccessToken(scope: string, credentialsJson?: string)
   }
 
   if (!credentialsJson) throw new Error("GOOGLE_SERVICE_ACCOUNT_JSON_MISSING");
-  const account = !credentialsJson.trim().startsWith("{")
-    ? { client_email: (await runtimeEnv("GOOGLE_SERVICE_ACCOUNT_EMAIL")) ?? "", private_key: credentialsJson }
-    : JSON.parse(credentialsJson) as ServiceAccount;
+  const account = await parseServiceAccount(credentialsJson);
   if (!account.client_email || !account.private_key) throw new Error("GOOGLE_SERVICE_ACCOUNT_JSON_INVALID");
   const now = Math.floor(Date.now() / 1000);
   const key = await importPKCS8(account.private_key, "RS256");
