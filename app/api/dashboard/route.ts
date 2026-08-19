@@ -46,7 +46,13 @@ export async function GET(request: Request) {
         ANALYTICS_NO_DATA: "No hay datos normalizados para esta selección y periodo",
         ANALYTICS_MIXED_CURRENCIES: "La selección contiene monedas distintas que todavía no han sido convertidas",
       };
-      return NextResponse.json({ error: messages[error.message] ?? "La configuración analítica no es válida" }, { status: 422 });
+      return NextResponse.json(
+        {
+          code: error.message,
+          error: messages[error.message] ?? "La configuración analítica no es válida",
+        },
+        { status: 422 },
+      );
     }
     console.error("[dashboard] query failed:", error instanceof Error ? `${error.name}: ${error.message}` : String(error));
     return NextResponse.json({ error: "Unable to load dashboard data" }, { status: 500 });

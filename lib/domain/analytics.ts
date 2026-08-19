@@ -20,6 +20,7 @@ export interface Campaign {
   id: string;
   projectId: string;
   name: string;
+  sourceName?: string;
   channel: string;
   objective: string;
   status: CampaignStatus;

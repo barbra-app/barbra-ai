@@ -30,9 +30,6 @@ import {
 import { AdvisorPanel } from "@/components/advisor/advisor-panel";
 import { UserProfileMenu } from "@/components/profile/user-profile-menu";
 import {
-  DEMO_CAMPAIGNS,
-  DEMO_ORGANIZATIONS,
-  DEMO_PROJECTS,
   DEMO_USER,
   type AppUser,
   type Campaign,
@@ -63,26 +60,32 @@ const CHANNEL_COLORS = [
   "var(--color-chart-4)",
 ];
 
+type DashboardIssue = {
+  kind: "empty" | "error";
+  message: string;
+};
+
 export function IntelligenceDashboard() {
   const [workspace, setWorkspace] = useState<{ user: AppUser; organizations: Organization[]; projects: Project[]; campaigns: Campaign[] }>({
     user: DEMO_USER,
-    organizations: DEMO_ORGANIZATIONS,
-    projects: DEMO_PROJECTS,
-    campaigns: DEMO_CAMPAIGNS,
+    organizations: [],
+    projects: [],
+    campaigns: [],
   });
-  const [organizationId, setOrganizationId] = useState(DEMO_ORGANIZATIONS[0].id);
+  const [workspaceReady, setWorkspaceReady] = useState(false);
+  const [organizationId, setOrganizationId] = useState("");
   const availableProjects = useMemo(
     () => workspace.projects.filter((project) => project.organizationId === organizationId),
     [organizationId, workspace.projects],
   );
-  const [projectId, setProjectId] = useState(availableProjects[0].id);
+  const [projectId, setProjectId] = useState("");
   const availableCampaigns = useMemo(() => workspace.campaigns.filter((campaign) => campaign.projectId === projectId), [projectId, workspace.campaigns]);
   const [campaignId, setCampaignId] = useState<string>("all");
   const [range, setRange] = useState<DateRangePreset>("30d");
   const [snapshot, setSnapshot] = useState<DashboardSnapshot | null>(null);
   const [advisorOpen, setAdvisorOpen] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [issue, setIssue] = useState<DashboardIssue | null>(null);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -97,11 +100,22 @@ export function IntelligenceDashboard() {
         return response.json();
       })
       .then(({ data }) => {
+        const nextOrganizationId = data.organizations[0]?.id ?? "";
+        const nextProjectId = data.projects.find(
+          (project: Project) => project.organizationId === nextOrganizationId,
+        )?.id ?? "";
         setWorkspace(data);
-        setOrganizationId(data.organizations[0]?.id ?? "");
+        setOrganizationId(nextOrganizationId);
+        setProjectId(nextProjectId);
+        setCampaignId("all");
+        setIssue(null);
+        setWorkspaceReady(true);
       })
       .catch((reason) => {
-        if (reason?.name !== "AbortError") setError(reason instanceof Error ? reason.message : String(reason));
+        if (reason?.name !== "AbortError") {
+          setIssue({ kind: "error", message: reason instanceof Error ? reason.message : String(reason) });
+          setLoading(false);
+        }
       });
     return () => controller.abort();
   }, []);
@@ -113,12 +127,12 @@ export function IntelligenceDashboard() {
   useEffect(() => setCampaignId("all"), [projectId]);
 
   useEffect(() => {
-    if (!organizationId || !projectId) return;
+    if (!workspaceReady || !organizationId || !projectId) return;
     const controller = new AbortController();
     const params = new URLSearchParams({ organizationId, projectId, range });
     if (campaignId !== "all") params.set("campaignId", campaignId);
     setLoading(true);
-    setError(null);
+    setIssue(null);
     getFirebaseIdToken()
       .then((token) => fetch(`/api/dashboard?${params}`, {
         cache: "no-store",
@@ -126,16 +140,31 @@ export function IntelligenceDashboard() {
         headers: token ? { Authorization: `Bearer ${token}` } : undefined,
       }))
       .then(async (response) => {
-        if (!response.ok) throw new Error((await response.json()).error ?? "No fue posible cargar el dashboard");
-        return response.json();
+        const payload = await response.json();
+        if (!response.ok) {
+          if (payload.code === "ANALYTICS_NO_DATA") {
+            setSnapshot(null);
+            setAdvisorOpen(false);
+            setIssue({ kind: "empty", message: payload.error });
+            return null;
+          }
+          throw new Error(payload.error ?? "No fue posible cargar el dashboard");
+        }
+        return payload;
       })
-      .then((payload) => setSnapshot(payload.data))
+      .then((payload) => {
+        if (payload) setSnapshot(payload.data);
+      })
       .catch((reason) => {
-        if (reason?.name !== "AbortError") setError(reason instanceof Error ? reason.message : String(reason));
+        if (reason?.name !== "AbortError") {
+          setSnapshot(null);
+          setAdvisorOpen(false);
+          setIssue({ kind: "error", message: reason instanceof Error ? reason.message : String(reason) });
+        }
       })
       .finally(() => setLoading(false));
     return () => controller.abort();
-  }, [organizationId, projectId, campaignId, range]);
+  }, [workspaceReady, organizationId, projectId, campaignId, range]);
 
   const project = availableProjects.find((item) => item.id === projectId);
   const campaign = availableCampaigns.find((item) => item.id === campaignId);
@@ -199,15 +228,31 @@ export function IntelligenceDashboard() {
           <section className="dashboard-hero">
             <div>
               <h1>{campaign ? campaign.name : project?.name}</h1>
-              <p>{snapshot?.periodLabel ?? "Consultando periodo"}</p>
+              <p>
+                {snapshot?.periodLabel
+                  ?? (issue?.kind === "empty" ? `Últimos ${range.replace("d", "")} días` : "Consultando periodo")}
+              </p>
             </div>
-            <div className="data-status" aria-live="polite">
+            <div className={cn("data-status", issue && "is-neutral")} aria-live="polite">
               <span />
-              {snapshot ? `Actualizado ${new Date(snapshot.updatedAt).toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" })}` : "Actualizando"}
+              {issue?.kind === "empty"
+                ? "Sin actividad reciente"
+                : issue?.kind === "error"
+                  ? "No disponible"
+                  : snapshot
+                    ? `Actualizado ${new Date(snapshot.updatedAt).toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" })}`
+                    : "Actualizando"}
             </div>
           </section>
 
-          {error ? <DashboardError message={error} /> : !snapshot ? <DashboardSkeleton /> : (
+          {issue?.kind === "empty" ? (
+            <DashboardEmptyState
+              campaignSelected={Boolean(campaign)}
+              range={range}
+              onShowAllCampaigns={() => setCampaignId("all")}
+              onTryNinetyDays={() => setRange("90d")}
+            />
+          ) : issue?.kind === "error" ? <DashboardError message={issue.message} /> : !snapshot ? <DashboardSkeleton /> : (
             <div className={loading ? "is-refreshing" : undefined}>
               <section className="kpi-grid" aria-label="Métricas críticas">
                 {snapshot.metrics.filter((metric) => CRITICAL_METRICS.has(metric.id)).map((metric) => (
@@ -326,6 +371,36 @@ function ChannelMix({ snapshot }: { snapshot: DashboardSnapshot }) {
 
 function DashboardSkeleton() {
   return <div className="dashboard-skeleton"><div className="skeleton-kpis">{Array.from({ length: 4 }, (_, index) => <span key={index} />)}</div><div className="skeleton-chart" /></div>;
+}
+
+function DashboardEmptyState({
+  campaignSelected,
+  range,
+  onShowAllCampaigns,
+  onTryNinetyDays,
+}: {
+  campaignSelected: boolean;
+  range: DateRangePreset;
+  onShowAllCampaigns: () => void;
+  onTryNinetyDays: () => void;
+}) {
+  const days = range.replace("d", "");
+
+  return (
+    <section className="dashboard-empty" aria-live="polite">
+      <Activity className="dashboard-empty-icon" aria-hidden="true" />
+      <div className="dashboard-empty-copy">
+        <strong>Sin actividad en este periodo</strong>
+        <p>
+          {campaignSelected ? "Esta campaña" : "Esta selección"} no registró métricas en los últimos {days} días.
+        </p>
+      </div>
+      <div className="dashboard-empty-actions">
+        {campaignSelected && <button className="primary" onClick={onShowAllCampaigns}>Ver todas las campañas</button>}
+        {range !== "90d" && <button onClick={onTryNinetyDays}>Probar 90 días</button>}
+      </div>
+    </section>
+  );
 }
 
 function DashboardError({ message }: { message: string }) {

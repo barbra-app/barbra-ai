@@ -1,4 +1,5 @@
 import type { AnalyticsRepository } from "@/lib/data/analytics-repository";
+import { humanizeCampaignName } from "@/lib/campaign-name";
 import { resolveAnalyticsScope, type CampaignAnalyticsScope } from "@/lib/data/analytics-scope";
 import { googleAccessToken } from "@/lib/google/access-token";
 import type {
@@ -323,7 +324,7 @@ export class BigQueryAnalyticsRepository implements AnalyticsRepository {
       const campaignKey = `${row.source}:${row.account_id}:${row.campaign_id}`;
       const campaign = campaigns.get(campaignKey) ?? {
         id: campaignKey,
-        name: row.campaign_name,
+        name: humanizeCampaignName(row.campaign_name),
         channel: channelLabel(row.source),
         status: campaignStatus(row.campaign_status),
         spend: 0,

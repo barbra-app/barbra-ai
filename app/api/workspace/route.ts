@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getRequestUser } from "@/lib/auth/server-session";
 import { DEMO_CAMPAIGNS, DEMO_ORGANIZATIONS, DEMO_PROJECTS, DEMO_USER } from "@/lib/domain/analytics";
 import { runtimeEnv } from "@/lib/runtime-env";
+import { humanizeCampaignName } from "@/lib/campaign-name";
 
 export const dynamic = "force-dynamic";
 
@@ -57,10 +58,12 @@ export async function GET(request: Request) {
       // Only expose campaigns that have a complete mapping to the canonical
       // BigQuery mart. This keeps selectors and analytics queries consistent.
       if (!data.source || !data.accountId || !data.externalCampaignId) return [];
+      const sourceName = String(data.name ?? doc.id);
       return [{
         id: doc.id,
         projectId: String(data.projectId),
-        name: String(data.name ?? doc.id),
+        name: String(data.displayName ?? humanizeCampaignName(sourceName)),
+        sourceName,
         channel: String(data.source),
         objective: String(data.objective ?? "Performance"),
         status: (["active", "paused", "completed"].includes(String(data.status)) ? String(data.status) : "active") as "active" | "paused" | "completed",

@@ -16,6 +16,29 @@ export async function getRequestUser(request: Request): Promise<AppUser> {
   }
 
   const decoded = await verifyFirebaseIdToken(token);
+  // Firestore is the canonical authorization source. Firebase custom claims
+  // can remain stale after an administrator changes a user's role or scope,
+  // so use them only as a fallback for legacy provisioned accounts.
+  const { getFirestoreDocument } = await import("@/lib/firebase/firestore-rest");
+  const document = await getFirestoreDocument("users", decoded.uid);
+  if (document.exists) {
+    const profile = document.data;
+    const role = profile.role === "admin" || profile.role === "owner" ? "admin" : "user";
+    const legacyOrganizationIds = Array.isArray(profile.organizationIds) ? profile.organizationIds.map(String) : [];
+    const organizationId = profile.organizationId
+      ? String(profile.organizationId)
+      : legacyOrganizationIds[0] ?? null;
+    return {
+      uid: decoded.uid,
+      name: String(profile.name ?? decoded.name ?? decoded.email ?? "Usuario"),
+      email: String(profile.email ?? decoded.email ?? ""),
+      role,
+      organizationId,
+      organizationIds: organizationId ? [organizationId] : legacyOrganizationIds,
+      projectIds: Array.isArray(profile.projectIds) ? profile.projectIds.map(String) : [],
+    };
+  }
+
   const claim = decoded.barbra && typeof decoded.barbra === "object" ? decoded.barbra as Record<string, unknown> : null;
   if (claim) {
     const role = claim.role === "admin" ? "admin" : "user";
@@ -31,24 +54,7 @@ export async function getRequestUser(request: Request): Promise<AppUser> {
       projectIds,
     };
   }
-  const { getFirestoreDocument } = await import("@/lib/firebase/firestore-rest");
-  const document = await getFirestoreDocument("users", decoded.uid);
-  if (!document.exists) throw new Error("USER_PROFILE_NOT_FOUND");
-  const profile = document.data;
-  const role = profile.role === "admin" || profile.role === "owner" ? "admin" : "user";
-  const legacyOrganizationIds = Array.isArray(profile.organizationIds) ? profile.organizationIds.map(String) : [];
-  const organizationId = profile.organizationId
-    ? String(profile.organizationId)
-    : legacyOrganizationIds[0] ?? null;
-  return {
-    uid: decoded.uid,
-    name: String(profile.name ?? decoded.name ?? decoded.email ?? "Usuario"),
-    email: String(profile.email ?? decoded.email ?? ""),
-    role,
-    organizationId,
-    organizationIds: organizationId ? [organizationId] : legacyOrganizationIds,
-    projectIds: Array.isArray(profile.projectIds) ? profile.projectIds.map(String) : [],
-  };
+  throw new Error("USER_PROFILE_NOT_FOUND");
 }
 
 export function assertProjectAccess(user: AppUser, organizationId: string, projectId: string) {
