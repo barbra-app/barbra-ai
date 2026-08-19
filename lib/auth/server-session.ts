@@ -31,10 +31,10 @@ export async function getRequestUser(request: Request): Promise<AppUser> {
       projectIds,
     };
   }
-  const { getFirebaseAdminFirestore } = await import("@/lib/firebase/admin");
-  const document = await (await getFirebaseAdminFirestore()).collection("users").doc(decoded.uid).get();
+  const { getFirestoreDocument } = await import("@/lib/firebase/firestore-rest");
+  const document = await getFirestoreDocument("users", decoded.uid);
   if (!document.exists) throw new Error("USER_PROFILE_NOT_FOUND");
-  const profile = document.data() ?? {};
+  const profile = document.data;
   const role = profile.role === "admin" || profile.role === "owner" ? "admin" : "user";
   const legacyOrganizationIds = Array.isArray(profile.organizationIds) ? profile.organizationIds.map(String) : [];
   const organizationId = profile.organizationId

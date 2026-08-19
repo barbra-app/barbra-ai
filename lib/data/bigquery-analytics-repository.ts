@@ -1,6 +1,6 @@
-import { BigQuery, type Query } from "@google-cloud/bigquery";
 import type { AnalyticsRepository } from "@/lib/data/analytics-repository";
-import { resolveAnalyticsScope } from "@/lib/data/analytics-scope";
+import { resolveAnalyticsScope, type CampaignAnalyticsScope } from "@/lib/data/analytics-scope";
+import { googleAccessToken } from "@/lib/google/access-token";
 import type {
   AdvisorInsight,
   AnalyticsQuery,
@@ -37,6 +37,66 @@ interface Totals {
   clicks: number;
   conversions: number;
   revenue: number;
+}
+
+interface BigQueryField {
+  name: string;
+  type: string;
+  mode?: string;
+  fields?: BigQueryField[];
+}
+
+interface BigQueryResponse {
+  jobComplete?: boolean;
+  jobReference?: { jobId?: string; location?: string };
+  schema?: { fields?: BigQueryField[] };
+  rows?: { f?: { v: unknown }[] }[];
+}
+
+function bigQueryParameters(params: { clientId: string; startDate: string; endDate: string; previousStartDate: string; campaigns: CampaignAnalyticsScope[] }) {
+  const stringParameter = (name: string, value: string) => ({
+    name,
+    parameterType: { type: "STRING" },
+    parameterValue: { value },
+  });
+  return [
+    stringParameter("clientId", params.clientId),
+    stringParameter("startDate", params.startDate),
+    stringParameter("endDate", params.endDate),
+    stringParameter("previousStartDate", params.previousStartDate),
+    {
+      name: "campaigns",
+      parameterType: {
+        type: "ARRAY",
+        arrayType: {
+          type: "STRUCT",
+          structTypes: ["source", "accountId", "campaignId"].map((name) => ({ name, type: { type: "STRING" } })),
+        },
+      },
+      parameterValue: {
+        arrayValues: params.campaigns.map((campaign) => ({
+          structValues: {
+            source: { value: campaign.source },
+            accountId: { value: campaign.accountId },
+            campaignId: { value: campaign.campaignId },
+          },
+        })),
+      },
+    },
+  ];
+}
+
+function decodeBigQueryRows<T>(payload: BigQueryResponse): T[] {
+  const fields = payload.schema?.fields ?? [];
+  return (payload.rows ?? []).map((row) => Object.fromEntries(
+    fields.map((field, index) => {
+      const raw = row.f?.[index]?.v ?? null;
+      if (raw !== null && field.type === "TIMESTAMP") {
+        return [field.name, new Date(Number(raw) * 1000).toISOString()];
+      }
+      return [field.name, raw];
+    }),
+  ) as T);
 }
 
 function isoDate(date: Date) {
@@ -137,16 +197,10 @@ function buildInsights(channels: ChannelBreakdown[], campaigns: CampaignPerforma
   return insights;
 }
 
-function bigQueryCredentials(raw?: string) {
-  if (!raw) return undefined;
-  const parsed = JSON.parse(raw) as { client_email?: string; private_key?: string };
-  if (!parsed.client_email || !parsed.private_key) throw new Error("BIGQUERY_SERVICE_ACCOUNT_JSON is invalid");
-  return { client_email: parsed.client_email, private_key: parsed.private_key };
-}
-
 export class BigQueryAnalyticsRepository implements AnalyticsRepository {
-  private client: BigQuery;
+  private projectId: string;
   private view: string;
+  private credentialsJson?: string;
   private maximumBytesBilled: string;
   private timeZone: string;
   private defaultCurrency: string;
@@ -157,23 +211,43 @@ export class BigQueryAnalyticsRepository implements AnalyticsRepository {
       throw new Error("GCP_PROJECT_ID and BIGQUERY_ANALYTICS_VIEW are required for BigQuery analytics");
     }
     if (!/^[A-Za-z0-9_.-]+$/.test(view)) throw new Error("BIGQUERY_ANALYTICS_VIEW contains invalid characters");
-    this.client = new BigQuery({ projectId, credentials: bigQueryCredentials(config.credentialsJson) });
+    this.projectId = projectId;
+    this.credentialsJson = config.credentialsJson;
     this.view = view;
     this.maximumBytesBilled = config.maximumBytesBilled ?? "250000000";
     this.timeZone = config.timeZone ?? "America/Bogota";
     this.defaultCurrency = config.defaultCurrency ?? "COP";
   }
 
-  private async rows<T>(query: string, params: Query["params"]): Promise<T[]> {
-    const [job] = await this.client.createQueryJob({
-      query,
-      params,
-      useLegacySql: false,
-      maximumBytesBilled: this.maximumBytesBilled,
-      jobTimeoutMs: 20_000,
+  private async rows<T>(query: string, params: { clientId: string; startDate: string; endDate: string; previousStartDate: string; campaigns: CampaignAnalyticsScope[] }): Promise<T[]> {
+    const token = await googleAccessToken("https://www.googleapis.com/auth/bigquery", this.credentialsJson);
+    const response = await fetch(`https://bigquery.googleapis.com/bigquery/v2/projects/${encodeURIComponent(this.projectId)}/queries`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+      body: JSON.stringify({
+        query,
+        useLegacySql: false,
+        timeoutMs: 20_000,
+        maxResults: 10_000,
+        maximumBytesBilled: this.maximumBytesBilled,
+        parameterMode: "NAMED",
+        queryParameters: bigQueryParameters(params),
+      }),
     });
-    const [rows] = await job.getQueryResults();
-    return rows as T[];
+    if (!response.ok) throw new Error(`BIGQUERY_QUERY_FAILED_${response.status}: ${await response.text()}`);
+    let payload = await response.json() as BigQueryResponse;
+    if (!payload.jobComplete && payload.jobReference?.jobId) {
+      const jobId = payload.jobReference.jobId;
+      const location = payload.jobReference.location ? `&location=${encodeURIComponent(payload.jobReference.location)}` : "";
+      for (let attempt = 0; attempt < 10 && !payload.jobComplete; attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 250));
+        const poll = await fetch(`https://bigquery.googleapis.com/bigquery/v2/projects/${encodeURIComponent(this.projectId)}/queries/${encodeURIComponent(jobId)}?timeoutMs=20000&maxResults=10000${location}`, { headers: { authorization: `Bearer ${token}` } });
+        if (!poll.ok) throw new Error(`BIGQUERY_RESULTS_FAILED_${poll.status}`);
+        payload = await poll.json() as BigQueryResponse;
+      }
+    }
+    if (!payload.jobComplete) throw new Error("BIGQUERY_QUERY_TIMEOUT");
+    return decodeBigQueryRows<T>(payload);
   }
 
   async getDashboard(query: AnalyticsQuery): Promise<DashboardSnapshot> {
@@ -187,7 +261,7 @@ export class BigQueryAnalyticsRepository implements AnalyticsRepository {
     previousStart.setUTCDate(previousEnd.getUTCDate() - days + 1);
 
     const scope = await resolveAnalyticsScope(query);
-    const params: NonNullable<Query["params"]> = {
+    const params = {
       clientId: scope.clientId,
       startDate: isoDate(start),
       endDate: isoDate(end),
