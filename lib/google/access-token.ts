@@ -7,14 +7,28 @@ interface ServiceAccount {
 }
 
 async function parseServiceAccount(raw: string): Promise<ServiceAccount> {
-  const trimmed = raw.trim();
-  if (trimmed.startsWith("{")) return JSON.parse(trimmed) as ServiceAccount;
-  let privateKey = trimmed;
+  let normalized = raw.trim();
+  if (normalized.startsWith("{")) return JSON.parse(normalized) as ServiceAccount;
+  if (normalized.startsWith('"')) normalized = JSON.parse(normalized) as string;
+  if (!normalized.includes("-----BEGIN")) {
+    try {
+      const decoded = atob(normalized.replace(/\s/g, ""));
+      if (decoded.trim().startsWith("{")) return JSON.parse(decoded) as ServiceAccount;
+      normalized = decoded;
+    } catch {
+      // Leave the original value in place so the format check below produces
+      // a safe, actionable error without logging credential contents.
+    }
+  }
+  let privateKey = normalized;
   if (privateKey.startsWith('"')) {
     privateKey = JSON.parse(privateKey) as string;
   }
   privateKey = privateKey.replace(/\\n/g, "\n");
   const pem = privateKey.match(/-----BEGIN PRIVATE KEY-----[\s\S]+?-----END PRIVATE KEY-----/)?.[0] ?? privateKey;
+  if (!pem.startsWith("-----BEGIN PRIVATE KEY-----")) {
+    throw new Error(`GOOGLE_PRIVATE_KEY_FORMAT_INVALID_LENGTH_${pem.length}`);
+  }
   return {
     client_email: (await runtimeEnv("GOOGLE_SERVICE_ACCOUNT_EMAIL")) ?? "",
     private_key: pem,
