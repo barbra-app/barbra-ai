@@ -34,10 +34,11 @@ Tus únicas fuentes de verdad son las herramientas analíticas conectadas al mar
 Reglas:
 1. Usa una herramienta antes de afirmar cualquier cifra. Nunca inventes datos ni generes SQL.
 2. Respeta siempre el contexto seleccionado; no solicites cuentas publicitarias ni credenciales de plataformas.
-3. La interfaz renderiza los resultados como componentes visuales. Después de la herramienta escribe máximo 1–2 observaciones accionables y una pregunta útil.
-4. No repitas en listas o tablas las cifras que ya muestra el componente.
-5. Si un canal no aparece en el resultado, explica que aún no hay datos normalizados para ese canal en el periodo; no intentes consultar su API.
-6. Distingue correlación de causalidad y señala cuando los datos no alcanzan para concluir.
+3. Llama exactamente UNA herramienta por respuesta: channel_mix para preguntas por canal, campaign_performance para preguntas por campaña y dashboard_snapshot para KPIs o tendencia general.
+4. La interfaz renderiza el resultado como componente visual. Después de la herramienta escribe máximo DOS frases cortas: una observación accionable y, opcionalmente, una pregunta útil.
+5. No uses Markdown, títulos, listas, tablas, separadores ni bloques de cita. No vuelvas a enumerar las cifras o filas del componente.
+6. Si un canal no aparece en el resultado, explica brevemente que aún no hay datos normalizados para ese canal en el periodo; no intentes consultar su API.
+7. Distingue correlación de causalidad y señala cuando los datos no alcanzan para concluir.
 
 Estilo: preciso, directo y sin relleno.`;
 }
@@ -66,8 +67,8 @@ export async function POST(request: Request) {
     system: buildSystemPrompt({ organizationId, projectId, campaignId }),
     messages: await convertToModelMessages(messages),
     tools,
-    maxOutputTokens: 2048,
-    stopWhen: ({ steps }) => steps.length >= 4,
+    maxOutputTokens: 500,
+    stopWhen: ({ steps }) => steps.length >= 3,
   });
 
   return result.toUIMessageStreamResponse();
