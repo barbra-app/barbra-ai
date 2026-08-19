@@ -1,7 +1,7 @@
 import { tool } from "ai";
 import { z } from "zod";
 import { getAnalyticsRepository } from "@/lib/data/get-analytics-repository";
-import type { DateRangePreset } from "@/lib/domain/analytics";
+import type { DashboardSnapshot, DateRangePreset } from "@/lib/domain/analytics";
 
 export function getAnalyticsTools(context: {
   organizationId: string;
@@ -9,8 +9,20 @@ export function getAnalyticsTools(context: {
   campaignId?: string | null;
 }) {
   const rangeSchema = z.enum(["7d", "30d", "90d"]).default("30d");
-  const snapshot = async (range: DateRangePreset, campaignId?: string | null) =>
-    (await getAnalyticsRepository()).getDashboard({ ...context, campaignId: campaignId ?? context.campaignId, range });
+  const cache = new Map<string, Promise<DashboardSnapshot>>();
+  const snapshot = (range: DateRangePreset, campaignId?: string | null) => {
+    const selectedCampaignId = campaignId === undefined ? context.campaignId : campaignId;
+    const key = `${range}:${selectedCampaignId ?? "all"}`;
+    const existing = cache.get(key);
+    if (existing) return existing;
+    const pending = getAnalyticsRepository().then((repository) => repository.getDashboard({
+      ...context,
+      campaignId: selectedCampaignId,
+      range,
+    }));
+    cache.set(key, pending);
+    return pending;
+  };
 
   return {
     get_dashboard_snapshot: tool({

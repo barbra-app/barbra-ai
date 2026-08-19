@@ -53,14 +53,20 @@ export async function GET(request: Request) {
     const campaignSnapshots = await Promise.all(
       projects.map((project) => db.collection("campaigns").where("projectId", "==", project.id).get()),
     );
-    const campaigns = campaignSnapshots.flatMap((snapshot) => snapshot.docs.map((doc) => ({
-      id: doc.id,
-      projectId: String(doc.data().projectId),
-      name: String(doc.data().name ?? doc.id),
-      channel: String(doc.data().channel ?? doc.data().source ?? "unknown"),
-      objective: String(doc.data().objective ?? "Performance"),
-      status: (["active", "paused", "completed"].includes(doc.data().status) ? doc.data().status : "active") as "active" | "paused" | "completed",
-    })));
+    const campaigns = campaignSnapshots.flatMap((snapshot) => snapshot.docs.flatMap((doc) => {
+      const data = doc.data();
+      // Only expose campaigns that have a complete mapping to the canonical
+      // BigQuery mart. This keeps selectors and analytics queries consistent.
+      if (!data.source || !data.accountId || !data.externalCampaignId) return [];
+      return [{
+        id: doc.id,
+        projectId: String(data.projectId),
+        name: String(data.name ?? doc.id),
+        channel: String(data.source),
+        objective: String(data.objective ?? "Performance"),
+        status: (["active", "paused", "completed"].includes(data.status) ? data.status : "active") as "active" | "paused" | "completed",
+      }];
+    }));
 
     return NextResponse.json({ data: { user, organizations, projects, campaigns }, mode: "firebase" });
   } catch (error) {

@@ -37,6 +37,16 @@ export async function GET(request: Request) {
     if (error instanceof Error && error.message === "FORBIDDEN") {
       return NextResponse.json({ error: "Project access denied" }, { status: 403 });
     }
+    if (error instanceof Error && error.message.startsWith("ANALYTICS_")) {
+      const messages: Record<string, string> = {
+        ANALYTICS_CLIENT_NOT_CONFIGURED: "La organización aún no tiene un client_id analítico configurado",
+        ANALYTICS_PROJECT_NOT_CONFIGURED: "El proyecto aún no tiene campañas conectadas al modelo analítico",
+        ANALYTICS_CAMPAIGN_NOT_CONFIGURED: "La campaña aún no tiene sus identificadores de canal configurados",
+        ANALYTICS_NO_DATA: "No hay datos normalizados para esta selección y periodo",
+        ANALYTICS_MIXED_CURRENCIES: "La selección contiene monedas distintas que todavía no han sido convertidas",
+      };
+      return NextResponse.json({ error: messages[error.message] ?? "La configuración analítica no es válida" }, { status: 422 });
+    }
     console.error("[dashboard] query failed", error);
     return NextResponse.json({ error: "Unable to load dashboard data" }, { status: 500 });
   }
