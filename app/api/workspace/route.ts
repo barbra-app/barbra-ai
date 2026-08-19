@@ -74,6 +74,12 @@ export async function GET(request: Request) {
   } catch (error) {
     const message = error instanceof Error ? error.message : "UNAUTHENTICATED";
     console.error("[workspace] load failed:", error instanceof Error ? `${error.name}: ${error.message}` : String(error));
+    if (message.startsWith("FIRESTORE_") || message.startsWith("GOOGLE_")) {
+      return NextResponse.json(
+        { error: "No pudimos conectar con el catálogo de datos. Intenta nuevamente en unos minutos." },
+        { status: 503 },
+      );
+    }
     return NextResponse.json(
       { error: message === "USER_PROFILE_NOT_FOUND" ? "User profile not provisioned" : "Authentication required" },
       { status: message === "USER_PROFILE_NOT_FOUND" ? 403 : 401 },
