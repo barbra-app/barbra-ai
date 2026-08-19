@@ -2,6 +2,7 @@
 
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
+import type { CSSProperties } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowUp, ChevronRight, CircleAlert, Lightbulb, RefreshCw, Sparkles, X } from "lucide-react";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
@@ -10,6 +11,14 @@ import type { DashboardSnapshot } from "@/lib/domain/analytics";
 import { normalizeOutput } from "@/lib/mcp/normalize";
 import { formatCurrency, formatNumber } from "@/lib/utils";
 import { getFirebaseIdToken } from "@/lib/firebase/client";
+
+const ADVISOR_CHART_COLORS = [
+  "var(--color-chart-1)",
+  "var(--color-chart-2)",
+  "var(--color-chart-3)",
+  "var(--color-chart-4)",
+  "var(--color-chart-5)",
+];
 
 const QUESTIONS = [
   "¿Qué explica el cambio en ROAS?",
@@ -171,7 +180,7 @@ function SnapshotAnswer({ snapshot }: { snapshot: DashboardSnapshot }) {
             <XAxis dataKey="date" tick={{ fontSize: 11, fill: "var(--color-muted)" }} tickFormatter={(value) => String(value).slice(5)} axisLine={false} tickLine={false} />
             <YAxis tick={{ fontSize: 11, fill: "var(--color-muted)" }} tickFormatter={(value) => `${Math.round(Number(value) / 1000000)}M`} axisLine={false} tickLine={false} />
             <Tooltip contentStyle={{ borderRadius: 10, border: "1px solid var(--color-rule)", fontSize: 12 }} formatter={(value) => formatCurrency(Number(value), snapshot.currency)} />
-            <Bar dataKey="spend" fill="var(--color-accent)" radius={[4, 4, 0, 0]} />
+            <Bar dataKey="spend" fill="var(--color-chart-1)" radius={[4, 4, 0, 0]} />
           </BarChart>
         </ResponsiveContainer>
       </div>
@@ -193,10 +202,10 @@ function ChannelAnswer({ rows, currency }: { rows: any[]; currency: string }) {
   const max = Math.max(...rows.map((row) => Number(row.spend)), 1);
   return (
     <div className="visual-answer channel-answer">
-      {rows.map((row) => (
+      {rows.map((row, index) => (
         <div key={row.channel}>
           <div><span>{row.channel}</span><strong>{formatNumber(Number(row.conversions))} conv.</strong></div>
-          <i><b style={{ width: `${(Number(row.spend) / max) * 100}%` }} /></i>
+          <i><b style={{ width: `${(Number(row.spend) / max) * 100}%`, "--channel-color": ADVISOR_CHART_COLORS[index % ADVISOR_CHART_COLORS.length] } as CSSProperties} /></i>
           <small>{formatCurrency(Number(row.spend), currency)}</small>
         </div>
       ))}

@@ -2,6 +2,15 @@
   {
     "date": "2026-08-19",
     "macrostructure": "Workbench",
+    "theme": "Barbra monochrome chrome with semantic data spectrum",
+    "genre": "modern-minimal",
+    "enrichment": "none",
+    "navigation": "existing application chrome preserved",
+    "brief": "Keep the application monochrome while restoring functional color to charts, channel series, and metric states."
+  },
+  {
+    "date": "2026-08-19",
+    "macrostructure": "Workbench",
     "theme": "Barbra monochrome identity",
     "genre": "modern-minimal",
     "enrichment": "none",

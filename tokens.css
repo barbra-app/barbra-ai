@@ -1,5 +1,5 @@
-/* Hallmark · pre-emit critique: P5 H5 E5 S5 R5 V4 */
-/* Hallmark · tokens: Monochrome/Barbra · warm-black OKLCH system */
+/* Hallmark · pre-emit critique: P5 H5 E5 S5 R5 V5 */
+/* Hallmark · tokens: Barbra monochrome chrome + semantic data spectrum */
 :root {
   --color-paper: oklch(97.8% 0.008 84);
   --color-paper-deep: oklch(94.8% 0.012 82);
@@ -15,19 +15,19 @@
   --color-accent-hover: oklch(32% 0.01 80);
   --color-accent-soft: oklch(93% 0.008 80);
   --color-accent-ink: oklch(99% 0.002 80);
-  --color-signal: oklch(82% 0.009 80);
-  --color-signal-strong: oklch(38% 0.01 80);
-  --color-signal-soft: oklch(95% 0.007 80);
-  --color-positive: oklch(30% 0.01 80);
-  --color-positive-soft: oklch(94% 0.007 80);
-  --color-negative: oklch(38% 0.012 80);
-  --color-negative-soft: oklch(91% 0.008 80);
+  --color-signal: oklch(76% 0.16 78);
+  --color-signal-strong: oklch(58% 0.16 72);
+  --color-signal-soft: oklch(95% 0.035 78);
+  --color-positive: oklch(42% 0.14 150);
+  --color-positive-soft: oklch(94% 0.035 150);
+  --color-negative: oklch(46% 0.18 28);
+  --color-negative-soft: oklch(94% 0.035 28);
   --color-focus: oklch(20% 0.012 80);
-  --color-chart-1: oklch(20% 0.012 80);
-  --color-chart-2: oklch(36% 0.01 80);
-  --color-chart-3: oklch(52% 0.009 80);
-  --color-chart-4: oklch(68% 0.008 80);
-  --color-chart-5: oklch(82% 0.007 80);
+  --color-chart-1: oklch(58% 0.21 264);
+  --color-chart-2: oklch(72% 0.17 78);
+  --color-chart-3: oklch(62% 0.14 190);
+  --color-chart-4: oklch(61% 0.18 320);
+  --color-chart-5: oklch(65% 0.18 32);
 
   --font-display: var(--font-space), "Helvetica Neue", sans-serif;
   --font-body: var(--font-inter), "Helvetica Neue", sans-serif;

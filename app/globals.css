@@ -115,7 +115,7 @@ button:disabled { cursor: not-allowed; opacity: 0.55; background-color: var(--co
 .chart-legend { display: none; align-items: center; gap: var(--space-4); color: var(--color-muted); font-size: var(--text-xs); }
 .chart-legend span { display: inline-flex; align-items: center; gap: var(--space-2); }
 .chart-legend i, .mix-list i { width: 0.5rem; height: 0.5rem; border-radius: 50%; }
-.chart-legend .spend { background: var(--color-accent); }
+.chart-legend .spend { background: var(--color-chart-1); }
 .chart-legend .revenue { background: var(--color-signal-strong); }
 .main-chart { height: 17rem; margin-top: var(--space-3); }
 .chart-tooltip { min-width: 10rem; padding: var(--space-3); border: var(--rule); border-radius: var(--radius-control); background: var(--color-surface); color: var(--color-ink); font-size: var(--text-xs); }
@@ -188,7 +188,7 @@ button:disabled { cursor: not-allowed; opacity: 0.55; background-color: var(--co
 .channel-answer > div { margin-bottom: var(--space-3); }
 .channel-answer > div > div { display: flex; justify-content: space-between; gap: var(--space-2); }
 .channel-answer i { display: block; height: 0.35rem; margin: var(--space-2) 0; overflow: hidden; border-radius: var(--radius-round); background: var(--color-rule); }
-.channel-answer i b { display: block; height: 100%; border-radius: inherit; background: var(--color-accent); }
+.channel-answer i b { display: block; height: 100%; border-radius: inherit; background: var(--channel-color, var(--color-chart-1)); }
 
 .dashboard-skeleton { display: grid; gap: var(--space-3); }
 .skeleton-kpis { display: grid; gap: var(--space-3); }

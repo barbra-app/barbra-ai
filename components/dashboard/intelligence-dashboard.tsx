@@ -380,7 +380,7 @@ function PerformanceChart({ snapshot }: { snapshot: DashboardSnapshot }) {
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart data={snapshot.trend} margin={{ top: 20, right: 4, left: 0, bottom: 0 }}>
             <defs>
-              <linearGradient id="spendGradient" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="var(--color-accent)" stopOpacity={0.16} /><stop offset="100%" stopColor="var(--color-accent)" stopOpacity={0} /></linearGradient>
+              <linearGradient id="spendGradient" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="var(--color-chart-1)" stopOpacity={0.18} /><stop offset="100%" stopColor="var(--color-chart-1)" stopOpacity={0} /></linearGradient>
               <linearGradient id="revenueGradient" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="var(--color-signal)" stopOpacity={0.16} /><stop offset="100%" stopColor="var(--color-signal)" stopOpacity={0} /></linearGradient>
             </defs>
             <CartesianGrid stroke="var(--color-rule)" vertical={false} />
@@ -388,7 +388,7 @@ function PerformanceChart({ snapshot }: { snapshot: DashboardSnapshot }) {
             <YAxis tick={{ fontSize: 11, fill: "var(--color-muted)" }} axisLine={false} tickLine={false} tickFormatter={(value) => `${Math.round(Number(value) / 1000000)}M`} width={38} />
             <Tooltip content={<PerformanceTooltip currency={snapshot.currency} />} />
             <Area type="monotone" dataKey="revenue" stroke="var(--color-signal-strong)" strokeWidth={2} fill="url(#revenueGradient)" />
-            <Area type="monotone" dataKey="spend" stroke="var(--color-accent)" strokeWidth={2} fill="url(#spendGradient)" />
+            <Area type="monotone" dataKey="spend" stroke="var(--color-chart-1)" strokeWidth={2} fill="url(#spendGradient)" />
           </AreaChart>
         </ResponsiveContainer>
       </div>
