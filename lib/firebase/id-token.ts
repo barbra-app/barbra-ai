@@ -13,7 +13,7 @@ export type FirebaseIdToken = JWTPayload & {
 };
 
 export async function verifyFirebaseIdToken(token: string): Promise<FirebaseIdToken> {
-  const projectId = runtimeEnv("FIREBASE_PROJECT_ID") ?? runtimeEnv("NEXT_PUBLIC_FIREBASE_PROJECT_ID");
+  const projectId = (await runtimeEnv("FIREBASE_PROJECT_ID")) ?? (await runtimeEnv("NEXT_PUBLIC_FIREBASE_PROJECT_ID"));
   if (!projectId) throw new Error("FIREBASE_PROJECT_ID_MISSING");
 
   const { payload } = await jwtVerify(token, GOOGLE_SECURE_TOKEN_KEYS, {

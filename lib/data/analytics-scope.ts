@@ -28,7 +28,7 @@ function campaignScope(data: FirebaseFirestore.DocumentData | undefined): Campai
  * Firebase owns tenancy/access; BigQuery only knows clients and ad-platform ids.
  */
 export async function resolveAnalyticsScope(query: AnalyticsQuery): Promise<AnalyticsScope> {
-  const db = getFirebaseAdminFirestore();
+  const db = await getFirebaseAdminFirestore();
   const [organization, project] = await Promise.all([
     db.collection("organizations").doc(query.organizationId).get(),
     db.collection("projects").doc(query.projectId).get(),

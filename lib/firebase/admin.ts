@@ -3,25 +3,25 @@ import { getAuth } from "firebase-admin/auth";
 import { getFirestore } from "firebase-admin/firestore";
 import { runtimeEnv } from "@/lib/runtime-env";
 
-function credential() {
-  const json = runtimeEnv("FIREBASE_SERVICE_ACCOUNT_JSON");
+async function credential() {
+  const json = await runtimeEnv("FIREBASE_SERVICE_ACCOUNT_JSON");
   return json ? cert(JSON.parse(json)) : undefined;
 }
 
-export function getFirebaseAdminApp() {
+export async function getFirebaseAdminApp() {
   if (getApps().length) return getApp();
   const options: AppOptions = {
-    projectId: runtimeEnv("FIREBASE_PROJECT_ID") ?? runtimeEnv("GCP_PROJECT_ID"),
+    projectId: (await runtimeEnv("FIREBASE_PROJECT_ID")) ?? (await runtimeEnv("GCP_PROJECT_ID")),
   };
-  const adminCredential = credential();
+  const adminCredential = await credential();
   if (adminCredential) options.credential = adminCredential;
   return initializeApp(options);
 }
 
-export function getFirebaseAdminAuth() {
-  return getAuth(getFirebaseAdminApp());
+export async function getFirebaseAdminAuth() {
+  return getAuth(await getFirebaseAdminApp());
 }
 
-export function getFirebaseAdminFirestore() {
-  return getFirestore(getFirebaseAdminApp());
+export async function getFirebaseAdminFirestore() {
+  return getFirestore(await getFirebaseAdminApp());
 }

@@ -1,5 +1,3 @@
-import { env as cloudflareEnv } from "cloudflare:workers";
-
 type RuntimeEnvironment = Record<string, unknown>;
 
 declare global {
@@ -9,8 +7,16 @@ declare global {
   var __BARBRA_RUNTIME_ENV__: RuntimeEnvironment | undefined;
 }
 
-export function runtimeEnv(key: string): string | undefined {
-  const runtimeValue = (cloudflareEnv as RuntimeEnvironment | undefined)?.[key]
-    ?? globalThis.__BARBRA_RUNTIME_ENV__?.[key];
+async function cloudflareEnvironment(): Promise<RuntimeEnvironment | undefined> {
+  try {
+    const module = await import("cloudflare:workers");
+    return module.env as RuntimeEnvironment;
+  } catch {
+    return globalThis.__BARBRA_RUNTIME_ENV__;
+  }
+}
+
+export async function runtimeEnv(key: string): Promise<string | undefined> {
+  const runtimeValue = (await cloudflareEnvironment())?.[key];
   return typeof runtimeValue === "string" ? runtimeValue : process.env[key];
 }

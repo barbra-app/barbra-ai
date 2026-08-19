@@ -19,12 +19,12 @@ function demoWorkspace(user = DEMO_USER) {
 export async function GET(request: Request) {
   try {
     const user = await getRequestUser(request);
-    if ((runtimeEnv("ANALYTICS_PROVIDER") ?? "mock") === "mock") {
+    if (((await runtimeEnv("ANALYTICS_PROVIDER")) ?? "mock") === "mock") {
       return NextResponse.json({ data: demoWorkspace(user), mode: "firebase-auth" });
     }
 
     const { getFirebaseAdminFirestore } = await import("@/lib/firebase/admin");
-    const db = getFirebaseAdminFirestore();
+    const db = await getFirebaseAdminFirestore();
     const admin = user.role === "admin";
     const organizationIds = user.organizationId ? [user.organizationId] : user.organizationIds;
     const [organizationDocs, projectDocs] = await Promise.all([
@@ -71,6 +71,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ data: { user, organizations, projects, campaigns }, mode: "firebase" });
   } catch (error) {
     const message = error instanceof Error ? error.message : "UNAUTHENTICATED";
+    console.error("[workspace] load failed:", error instanceof Error ? `${error.name}: ${error.message}` : String(error));
     return NextResponse.json(
       { error: message === "USER_PROFILE_NOT_FOUND" ? "User profile not provisioned" : "Authentication required" },
       { status: message === "USER_PROFILE_NOT_FOUND" ? 403 : 401 },

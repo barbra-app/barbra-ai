@@ -9,7 +9,7 @@ function bearerToken(request: Request) {
 
 export async function getRequestUser(request: Request): Promise<AppUser> {
   const token = bearerToken(request);
-  const authRequired = runtimeEnv("REQUIRE_FIREBASE_AUTH") === "true";
+  const authRequired = await runtimeEnv("REQUIRE_FIREBASE_AUTH") === "true";
   if (!token) {
     if (authRequired) throw new Error("UNAUTHENTICATED");
     return DEMO_USER;
@@ -32,7 +32,7 @@ export async function getRequestUser(request: Request): Promise<AppUser> {
     };
   }
   const { getFirebaseAdminFirestore } = await import("@/lib/firebase/admin");
-  const document = await getFirebaseAdminFirestore().collection("users").doc(decoded.uid).get();
+  const document = await (await getFirebaseAdminFirestore()).collection("users").doc(decoded.uid).get();
   if (!document.exists) throw new Error("USER_PROFILE_NOT_FOUND");
   const profile = document.data() ?? {};
   const role = profile.role === "admin" || profile.role === "owner" ? "admin" : "user";

@@ -62,13 +62,13 @@ export async function POST(request: Request) {
   }
 
   const tools = getAnalyticsTools({ organizationId, projectId, campaignId });
-  const anthropicApiKey = runtimeEnv("ANTHROPIC_API_KEY");
+  const anthropicApiKey = await runtimeEnv("ANTHROPIC_API_KEY");
   if (!anthropicApiKey) {
     return Response.json({ error: "Barbra Intelligence is not configured" }, { status: 503 });
   }
   const anthropic = createAnthropic({ apiKey: anthropicApiKey });
   const result = streamText({
-    model: anthropic(runtimeEnv("BARBRA_MODEL") || "claude-sonnet-4-6"),
+    model: anthropic((await runtimeEnv("BARBRA_MODEL")) || "claude-sonnet-4-6"),
     system: buildSystemPrompt({ organizationId, projectId, campaignId }),
     messages: await convertToModelMessages(messages),
     tools,

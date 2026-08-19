@@ -1,6 +1,5 @@
 import { BigQuery, type Query } from "@google-cloud/bigquery";
 import type { AnalyticsRepository } from "@/lib/data/analytics-repository";
-import { runtimeEnv } from "@/lib/runtime-env";
 import { resolveAnalyticsScope } from "@/lib/data/analytics-scope";
 import type {
   AdvisorInsight,
@@ -44,9 +43,9 @@ function isoDate(date: Date) {
   return date.toISOString().slice(0, 10);
 }
 
-function reportingDate() {
+function reportingDate(timeZone: string) {
   return new Intl.DateTimeFormat("en-CA", {
-    timeZone: runtimeEnv("BIGQUERY_REPORTING_TIMEZONE") ?? "America/Bogota",
+    timeZone,
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
@@ -138,8 +137,7 @@ function buildInsights(channels: ChannelBreakdown[], campaigns: CampaignPerforma
   return insights;
 }
 
-function bigQueryCredentials() {
-  const raw = runtimeEnv("BIGQUERY_SERVICE_ACCOUNT_JSON");
+function bigQueryCredentials(raw?: string) {
   if (!raw) return undefined;
   const parsed = JSON.parse(raw) as { client_email?: string; private_key?: string };
   if (!parsed.client_email || !parsed.private_key) throw new Error("BIGQUERY_SERVICE_ACCOUNT_JSON is invalid");
@@ -149,25 +147,29 @@ function bigQueryCredentials() {
 export class BigQueryAnalyticsRepository implements AnalyticsRepository {
   private client: BigQuery;
   private view: string;
+  private maximumBytesBilled: string;
+  private timeZone: string;
+  private defaultCurrency: string;
 
-  constructor() {
-    const projectId = runtimeEnv("GCP_PROJECT_ID");
-    const view = runtimeEnv("BIGQUERY_ANALYTICS_VIEW");
+  constructor(config: { projectId?: string; view?: string; credentialsJson?: string; maximumBytesBilled?: string; timeZone?: string; defaultCurrency?: string }) {
+    const { projectId, view } = config;
     if (!projectId || !view) {
       throw new Error("GCP_PROJECT_ID and BIGQUERY_ANALYTICS_VIEW are required for BigQuery analytics");
     }
     if (!/^[A-Za-z0-9_.-]+$/.test(view)) throw new Error("BIGQUERY_ANALYTICS_VIEW contains invalid characters");
-    this.client = new BigQuery({ projectId, credentials: bigQueryCredentials() });
+    this.client = new BigQuery({ projectId, credentials: bigQueryCredentials(config.credentialsJson) });
     this.view = view;
+    this.maximumBytesBilled = config.maximumBytesBilled ?? "250000000";
+    this.timeZone = config.timeZone ?? "America/Bogota";
+    this.defaultCurrency = config.defaultCurrency ?? "COP";
   }
 
   private async rows<T>(query: string, params: Query["params"]): Promise<T[]> {
-    const maximumBytesBilled = runtimeEnv("BIGQUERY_MAX_BYTES_BILLED") ?? "250000000";
     const [job] = await this.client.createQueryJob({
       query,
       params,
       useLegacySql: false,
-      maximumBytesBilled,
+      maximumBytesBilled: this.maximumBytesBilled,
       jobTimeoutMs: 20_000,
     });
     const [rows] = await job.getQueryResults();
@@ -176,7 +178,7 @@ export class BigQueryAnalyticsRepository implements AnalyticsRepository {
 
   async getDashboard(query: AnalyticsQuery): Promise<DashboardSnapshot> {
     const days = RANGE_DAYS[query.range];
-    const end = new Date(`${reportingDate()}T00:00:00.000Z`);
+    const end = new Date(`${reportingDate(this.timeZone)}T00:00:00.000Z`);
     const start = new Date(end);
     start.setUTCDate(end.getUTCDate() - days + 1);
     const previousEnd = new Date(start);
@@ -268,7 +270,7 @@ export class BigQueryAnalyticsRepository implements AnalyticsRepository {
     }
 
     if (currencies.size > 1) throw new Error("ANALYTICS_MIXED_CURRENCIES");
-    const currency = [...currencies][0] ?? runtimeEnv("BIGQUERY_DEFAULT_CURRENCY") ?? "COP";
+    const currency = [...currencies][0] ?? this.defaultCurrency;
     const metrics: MetricSummary[] = [
       { id: "spend", label: "Inversión", value: current.spend, previousValue: previousValue(current.spend, previous.spend), format: "currency", positiveWhen: "up" },
       { id: "impressions", label: "Impresiones", value: current.impressions, previousValue: previousValue(current.impressions, previous.impressions), format: "number", positiveWhen: "up" },

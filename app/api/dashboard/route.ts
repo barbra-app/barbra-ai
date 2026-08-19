@@ -30,7 +30,7 @@ export async function GET(request: Request) {
     const user = await getRequestUser(request);
     assertProjectAccess(user, parsed.data.organizationId, parsed.data.projectId);
     const data = await (await getAnalyticsRepository()).getDashboard(parsed.data);
-    return NextResponse.json({ data, provider: runtimeEnv("ANALYTICS_PROVIDER") ?? "mock", user: { uid: user.uid, name: user.name, role: user.role } });
+    return NextResponse.json({ data, provider: (await runtimeEnv("ANALYTICS_PROVIDER")) ?? "mock", user: { uid: user.uid, name: user.name, role: user.role } });
   } catch (error) {
     if (error instanceof Error && error.message === "UNAUTHENTICATED") {
       return NextResponse.json({ error: "Authentication required" }, { status: 401 });
@@ -48,7 +48,7 @@ export async function GET(request: Request) {
       };
       return NextResponse.json({ error: messages[error.message] ?? "La configuración analítica no es válida" }, { status: 422 });
     }
-    console.error("[dashboard] query failed", error);
+    console.error("[dashboard] query failed:", error instanceof Error ? `${error.name}: ${error.message}` : String(error));
     return NextResponse.json({ error: "Unable to load dashboard data" }, { status: 500 });
   }
 }
