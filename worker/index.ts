@@ -10,6 +10,7 @@ interface Fetcher {
 }
 
 interface Env {
+  [key: string]: unknown;
   ASSETS: Fetcher;
   IMAGES: {
     input(stream: ReadableStream): {
@@ -20,6 +21,12 @@ interface Env {
   };
 }
 
+function applyRuntimeEnvironment(env: Env) {
+  for (const [key, value] of Object.entries(env)) {
+    if (typeof value === "string") process.env[key] = value;
+  }
+}
+
 interface ExecutionContext {
   waitUntil(promise: Promise<unknown>): void;
   passThroughOnException(): void;
@@ -27,6 +34,10 @@ interface ExecutionContext {
 
 const worker = {
   async fetch(request: Request, env: Env, context: ExecutionContext) {
+    // Sites/Cloudflare provides runtime variables through Worker bindings.
+    // Vinext server routes read process.env, so bridge string bindings before
+    // dispatching the request while leaving service bindings untouched.
+    applyRuntimeEnvironment(env);
     const url = new URL(request.url);
     if (url.pathname === "/_vinext/image") {
       return handleImageOptimization(request, {
