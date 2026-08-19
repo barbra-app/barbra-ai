@@ -27,10 +27,10 @@ function campaignScope(data: Record<string, unknown> | undefined): CampaignAnaly
  * Translates Firebase catalog ids into the canonical BigQuery identifiers.
  * Firebase owns tenancy/access; BigQuery only knows clients and ad-platform ids.
  */
-export async function resolveAnalyticsScope(query: AnalyticsQuery): Promise<AnalyticsScope> {
+export async function resolveAnalyticsScope(query: AnalyticsQuery, firebaseIdToken?: string): Promise<AnalyticsScope> {
   const [organization, project] = await Promise.all([
-    getFirestoreDocument("organizations", query.organizationId),
-    getFirestoreDocument("projects", query.projectId),
+    getFirestoreDocument("organizations", query.organizationId, firebaseIdToken),
+    getFirestoreDocument("projects", query.projectId, firebaseIdToken),
   ]);
 
   if (!organization.exists || !project.exists) throw new Error("ANALYTICS_SCOPE_NOT_FOUND");
@@ -42,7 +42,7 @@ export async function resolveAnalyticsScope(query: AnalyticsQuery): Promise<Anal
   if (!clientId) throw new Error("ANALYTICS_CLIENT_NOT_CONFIGURED");
 
   if (query.campaignId) {
-    const campaign = await getFirestoreDocument("campaigns", query.campaignId);
+    const campaign = await getFirestoreDocument("campaigns", query.campaignId, firebaseIdToken);
     if (!campaign.exists || requiredString(campaign.data.projectId) !== query.projectId) {
       throw new Error("ANALYTICS_CAMPAIGN_NOT_FOUND");
     }
@@ -51,7 +51,7 @@ export async function resolveAnalyticsScope(query: AnalyticsQuery): Promise<Anal
     return { clientId, campaigns: [scope] };
   }
 
-  const campaigns = await queryFirestoreDocuments("campaigns", "projectId", query.projectId);
+  const campaigns = await queryFirestoreDocuments("campaigns", "projectId", query.projectId, firebaseIdToken);
   const scopes = campaigns
     .map((document) => campaignScope(document.data))
     .filter((scope): scope is CampaignAnalyticsScope => scope !== null);

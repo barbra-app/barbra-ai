@@ -7,7 +7,7 @@ export function getAnalyticsTools(context: {
   organizationId: string;
   projectId: string;
   campaignId?: string | null;
-}) {
+}, auth?: { firestoreToken?: string }) {
   const rangeSchema = z.enum(["7d", "30d", "90d"]).default("30d");
   const cache = new Map<string, Promise<DashboardSnapshot>>();
   const snapshot = (range: DateRangePreset, campaignId?: string | null) => {
@@ -19,7 +19,7 @@ export function getAnalyticsTools(context: {
       ...context,
       campaignId: selectedCampaignId,
       range,
-    }));
+    }, auth));
     cache.set(key, pending);
     return pending;
   };

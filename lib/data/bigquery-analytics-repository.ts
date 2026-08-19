@@ -257,7 +257,7 @@ export class BigQueryAnalyticsRepository implements AnalyticsRepository {
     return decodeBigQueryRows<T>(payload);
   }
 
-  async getDashboard(query: AnalyticsQuery): Promise<DashboardSnapshot> {
+  async getDashboard(query: AnalyticsQuery, context?: { firestoreToken?: string }): Promise<DashboardSnapshot> {
     const days = RANGE_DAYS[query.range];
     const end = new Date(`${reportingDate(this.timeZone)}T00:00:00.000Z`);
     const start = new Date(end);
@@ -267,7 +267,7 @@ export class BigQueryAnalyticsRepository implements AnalyticsRepository {
     const previousStart = new Date(previousEnd);
     previousStart.setUTCDate(previousEnd.getUTCDate() - days + 1);
 
-    const scope = await resolveAnalyticsScope(query);
+    const scope = await resolveAnalyticsScope(query, context?.firestoreToken);
     const params = {
       clientId: scope.clientId,
       startDate: isoDate(start),

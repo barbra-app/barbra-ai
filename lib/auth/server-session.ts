@@ -2,13 +2,13 @@ import { DEMO_USER, type AppUser } from "@/lib/domain/analytics";
 import { verifyFirebaseIdToken } from "@/lib/firebase/id-token";
 import { runtimeEnv } from "@/lib/runtime-env";
 
-function bearerToken(request: Request) {
+export function requestBearerToken(request: Request) {
   const header = request.headers.get("authorization");
   return header?.startsWith("Bearer ") ? header.slice(7) : null;
 }
 
 export async function getRequestUser(request: Request): Promise<AppUser> {
-  const token = bearerToken(request);
+  const token = requestBearerToken(request);
   const authRequired = await runtimeEnv("REQUIRE_FIREBASE_AUTH") === "true";
   if (!token) {
     if (authRequired) throw new Error("UNAUTHENTICATED");
@@ -20,7 +20,7 @@ export async function getRequestUser(request: Request): Promise<AppUser> {
   // can remain stale after an administrator changes a user's role or scope,
   // so use them only as a fallback for legacy provisioned accounts.
   const { getFirestoreDocument } = await import("@/lib/firebase/firestore-rest");
-  const document = await getFirestoreDocument("users", decoded.uid);
+  const document = await getFirestoreDocument("users", decoded.uid, token);
   if (document.exists) {
     const profile = document.data;
     const role = profile.role === "admin" || profile.role === "owner" ? "admin" : "user";

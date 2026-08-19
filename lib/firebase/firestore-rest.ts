@@ -47,8 +47,8 @@ function decodeDocument(document?: { name?: string; fields?: Record<string, Reco
   };
 }
 
-async function authorizedFetch(url: string, init?: RequestInit) {
-  const token = await accessToken();
+async function authorizedFetch(url: string, init?: RequestInit, firebaseIdToken?: string) {
+  const token = firebaseIdToken ?? await accessToken();
   const response = await fetch(url, {
     ...init,
     headers: { authorization: `Bearer ${token}`, "content-type": "application/json", ...init?.headers },
@@ -56,21 +56,21 @@ async function authorizedFetch(url: string, init?: RequestInit) {
   return response;
 }
 
-export async function getFirestoreDocument(collection: string, id: string) {
-  const response = await authorizedFetch(`${await baseUrl()}/${encodeURIComponent(collection)}/${encodeURIComponent(id)}`);
+export async function getFirestoreDocument(collection: string, id: string, firebaseIdToken?: string) {
+  const response = await authorizedFetch(`${await baseUrl()}/${encodeURIComponent(collection)}/${encodeURIComponent(id)}`, undefined, firebaseIdToken);
   if (response.status === 404) return decodeDocument();
   if (!response.ok) throw new Error(`FIRESTORE_GET_FAILED_${response.status}`);
   return decodeDocument(await response.json());
 }
 
-export async function listFirestoreDocuments(collection: string) {
+export async function listFirestoreDocuments(collection: string, firebaseIdToken?: string) {
   const documents: FirestoreDocument[] = [];
   let pageToken: string | undefined;
   do {
     const url = new URL(`${await baseUrl()}/${encodeURIComponent(collection)}`);
     url.searchParams.set("pageSize", "300");
     if (pageToken) url.searchParams.set("pageToken", pageToken);
-    const response = await authorizedFetch(url.toString());
+    const response = await authorizedFetch(url.toString(), undefined, firebaseIdToken);
     if (!response.ok) throw new Error(`FIRESTORE_LIST_FAILED_${response.status}`);
     const payload = await response.json() as { documents?: Parameters<typeof decodeDocument>[0][]; nextPageToken?: string };
     documents.push(...(payload.documents ?? []).map(decodeDocument));
@@ -79,7 +79,7 @@ export async function listFirestoreDocuments(collection: string) {
   return documents;
 }
 
-export async function queryFirestoreDocuments(collection: string, field: string, stringValue: string) {
+export async function queryFirestoreDocuments(collection: string, field: string, stringValue: string, firebaseIdToken?: string) {
   const root = (await baseUrl()).replace(/\/documents$/, "");
   const response = await authorizedFetch(`${root}/documents:runQuery`, {
     method: "POST",
@@ -89,7 +89,7 @@ export async function queryFirestoreDocuments(collection: string, field: string,
         where: { fieldFilter: { field: { fieldPath: field }, op: "EQUAL", value: { stringValue } } },
       },
     }),
-  });
+  }, firebaseIdToken);
   if (!response.ok) throw new Error(`FIRESTORE_QUERY_FAILED_${response.status}`);
   const rows = await response.json() as { document?: Parameters<typeof decodeDocument>[0] }[];
   return rows.flatMap((row) => row.document ? [decodeDocument(row.document)] : []);

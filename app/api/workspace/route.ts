@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getRequestUser } from "@/lib/auth/server-session";
+import { getRequestUser, requestBearerToken } from "@/lib/auth/server-session";
 import { DEMO_CAMPAIGNS, DEMO_ORGANIZATIONS, DEMO_PROJECTS, DEMO_USER } from "@/lib/domain/analytics";
 import { runtimeEnv } from "@/lib/runtime-env";
 import { humanizeCampaignName } from "@/lib/campaign-name";
@@ -25,17 +25,18 @@ export async function GET(request: Request) {
     }
 
     const { getFirestoreDocument, listFirestoreDocuments, queryFirestoreDocuments } = await import("@/lib/firebase/firestore-rest");
+    const firebaseIdToken = requestBearerToken(request) ?? undefined;
     const admin = user.role === "admin";
     const organizationIds = user.organizationId ? [user.organizationId] : user.organizationIds;
     const [organizationDocs, projectDocs] = await Promise.all([
       admin
-        ? listFirestoreDocuments("organizations")
-        : Promise.all(organizationIds.map((id) => getFirestoreDocument("organizations", id))),
+        ? listFirestoreDocuments("organizations", firebaseIdToken)
+        : Promise.all(organizationIds.map((id) => getFirestoreDocument("organizations", id, firebaseIdToken))),
       admin
-        ? listFirestoreDocuments("projects")
+        ? listFirestoreDocuments("projects", firebaseIdToken)
         : user.projectIds.length
-          ? Promise.all(user.projectIds.map((id) => getFirestoreDocument("projects", id)))
-          : Promise.all(organizationIds.map((id) => queryFirestoreDocuments("projects", "organizationId", id)))
+          ? Promise.all(user.projectIds.map((id) => getFirestoreDocument("projects", id, firebaseIdToken)))
+          : Promise.all(organizationIds.map((id) => queryFirestoreDocuments("projects", "organizationId", id, firebaseIdToken)))
               .then((snapshots) => snapshots.flat()),
     ]);
     const organizations = organizationDocs.filter((doc) => doc.exists).map((doc) => ({
@@ -51,7 +52,7 @@ export async function GET(request: Request) {
       status: doc.data.status === "archived" ? "archived" as const : "active" as const,
     }));
     const campaignSnapshots = await Promise.all(
-      projects.map((project) => queryFirestoreDocuments("campaigns", "projectId", project.id)),
+      projects.map((project) => queryFirestoreDocuments("campaigns", "projectId", project.id, firebaseIdToken)),
     );
     const campaigns = campaignSnapshots.flatMap((snapshot) => snapshot.flatMap((doc) => {
       const data = doc.data;

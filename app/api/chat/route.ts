@@ -2,7 +2,7 @@ import { createAnthropic } from "@ai-sdk/anthropic";
 import { convertToModelMessages, streamText, type UIMessage } from "ai";
 import { z } from "zod";
 import { getAnalyticsTools } from "@/lib/ai/analytics-tools";
-import { assertProjectAccess, getRequestUser } from "@/lib/auth/server-session";
+import { assertProjectAccess, getRequestUser, requestBearerToken } from "@/lib/auth/server-session";
 import { runtimeEnv } from "@/lib/runtime-env";
 
 export const maxDuration = 60;
@@ -61,7 +61,10 @@ export async function POST(request: Request) {
     );
   }
 
-  const tools = getAnalyticsTools({ organizationId, projectId, campaignId });
+  const tools = getAnalyticsTools(
+    { organizationId, projectId, campaignId },
+    { firestoreToken: requestBearerToken(request) ?? undefined },
+  );
   const anthropicApiKey = await runtimeEnv("ANTHROPIC_API_KEY");
   if (!anthropicApiKey) {
     return Response.json({ error: "Barbra Intelligence is not configured" }, { status: 503 });

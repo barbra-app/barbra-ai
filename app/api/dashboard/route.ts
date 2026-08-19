@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getAnalyticsRepository } from "@/lib/data/get-analytics-repository";
-import { assertProjectAccess, getRequestUser } from "@/lib/auth/server-session";
+import { assertProjectAccess, getRequestUser, requestBearerToken } from "@/lib/auth/server-session";
 import { runtimeEnv } from "@/lib/runtime-env";
 
 export const dynamic = "force-dynamic";
@@ -29,7 +29,9 @@ export async function GET(request: Request) {
   try {
     const user = await getRequestUser(request);
     assertProjectAccess(user, parsed.data.organizationId, parsed.data.projectId);
-    const data = await (await getAnalyticsRepository()).getDashboard(parsed.data);
+    const data = await (await getAnalyticsRepository()).getDashboard(parsed.data, {
+      firestoreToken: requestBearerToken(request) ?? undefined,
+    });
     return NextResponse.json({ data, provider: (await runtimeEnv("ANALYTICS_PROVIDER")) ?? "mock", user: { uid: user.uid, name: user.name, role: user.role } });
   } catch (error) {
     if (error instanceof Error && error.message === "UNAUTHENTICATED") {
