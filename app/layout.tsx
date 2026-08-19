@@ -1,10 +1,11 @@
 import type { Metadata, Viewport } from "next";
-import { Bricolage_Grotesque, Inter } from "next/font/google";
+import { Inter, Space_Grotesk } from "next/font/google";
+import { headers } from "next/headers";
 import "./globals.css";
 
-const bricolage = Bricolage_Grotesque({
+const spaceGrotesk = Space_Grotesk({
   subsets: ["latin"],
-  variable: "--font-bricolage",
+  variable: "--font-space",
   display: "swap",
 });
 
@@ -14,17 +15,32 @@ const inter = Inter({
   display: "swap",
 });
 
-export const metadata: Metadata = {
-  title: "Barbra — El motor de GTM",
-  description:
-    "Inteligencia de medios potenciada por IA. Pregunta sobre cualquier cuenta o campaña y recibe gráficos y reportes en tiempo real.",
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const requestHeaders = await headers();
+  const host = requestHeaders.get("x-forwarded-host") ?? requestHeaders.get("host") ?? "localhost:3000";
+  const protocol = requestHeaders.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
+  const origin = `${protocol}://${host}`;
+  const description = "De datos dispersos a decisiones claras con inteligencia de medios potenciada por IA.";
+  return {
+    metadataBase: new URL(origin),
+    title: "Barbra Intelligence",
+    description,
+    openGraph: {
+      title: "Barbra Intelligence",
+      description,
+      type: "website",
+      url: origin,
+      images: [{ url: `${origin}/og.png`, width: 1672, height: 941, alt: "Barbra Intelligence" }],
+    },
+    twitter: { card: "summary_large_image", title: "Barbra Intelligence", description, images: [`${origin}/og.png`] },
+  };
+}
 
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover", // habilita env(safe-area-inset-*) para iOS notch
-  themeColor: "#0a0a0a",
+  themeColor: "#f5f1e9",
 };
 
 export default function RootLayout({
@@ -33,8 +49,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="es" className={`${bricolage.variable} ${inter.variable}`}>
-      <body className="min-h-dvh bg-[var(--color-bg)] text-[var(--color-fg)] antialiased">
+    <html lang="es" className={`${spaceGrotesk.variable} ${inter.variable}`}>
+      <body className="min-h-dvh antialiased">
         {children}
       </body>
     </html>
