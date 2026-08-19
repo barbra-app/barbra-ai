@@ -1,7 +1,8 @@
 import type { AnalyticsRepository } from "@/lib/data/analytics-repository";
+import { runtimeEnv } from "@/lib/runtime-env";
 
 export async function getAnalyticsRepository(): Promise<AnalyticsRepository> {
-  if (process.env.ANALYTICS_PROVIDER === "bigquery") {
+  if (runtimeEnv("ANALYTICS_PROVIDER") === "bigquery") {
     const { BigQueryAnalyticsRepository } = await import("@/lib/data/bigquery-analytics-repository");
     return new BigQueryAnalyticsRepository();
   }

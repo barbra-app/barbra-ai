@@ -1,12 +1,12 @@
-import { anthropic } from "@ai-sdk/anthropic";
+import { createAnthropic } from "@ai-sdk/anthropic";
 import { convertToModelMessages, streamText, type UIMessage } from "ai";
 import { z } from "zod";
 import { getAnalyticsTools } from "@/lib/ai/analytics-tools";
 import { assertProjectAccess, getRequestUser } from "@/lib/auth/server-session";
+import { runtimeEnv } from "@/lib/runtime-env";
 
 export const maxDuration = 60;
 
-const MODEL_ID = process.env.BARBRA_MODEL || "claude-sonnet-4-6";
 const RequestSchema = z.object({
   messages: z.array(z.custom<UIMessage>()),
   organizationId: z.string().min(1).max(120),
@@ -62,8 +62,13 @@ export async function POST(request: Request) {
   }
 
   const tools = getAnalyticsTools({ organizationId, projectId, campaignId });
+  const anthropicApiKey = runtimeEnv("ANTHROPIC_API_KEY");
+  if (!anthropicApiKey) {
+    return Response.json({ error: "Barbra Intelligence is not configured" }, { status: 503 });
+  }
+  const anthropic = createAnthropic({ apiKey: anthropicApiKey });
   const result = streamText({
-    model: anthropic(MODEL_ID),
+    model: anthropic(runtimeEnv("BARBRA_MODEL") || "claude-sonnet-4-6"),
     system: buildSystemPrompt({ organizationId, projectId, campaignId }),
     messages: await convertToModelMessages(messages),
     tools,

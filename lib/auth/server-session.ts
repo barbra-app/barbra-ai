@@ -1,5 +1,6 @@
 import { DEMO_USER, type AppUser } from "@/lib/domain/analytics";
 import { verifyFirebaseIdToken } from "@/lib/firebase/id-token";
+import { runtimeEnv } from "@/lib/runtime-env";
 
 function bearerToken(request: Request) {
   const header = request.headers.get("authorization");
@@ -8,7 +9,7 @@ function bearerToken(request: Request) {
 
 export async function getRequestUser(request: Request): Promise<AppUser> {
   const token = bearerToken(request);
-  const authRequired = process.env.REQUIRE_FIREBASE_AUTH === "true";
+  const authRequired = runtimeEnv("REQUIRE_FIREBASE_AUTH") === "true";
   if (!token) {
     if (authRequired) throw new Error("UNAUTHENTICATED");
     return DEMO_USER;

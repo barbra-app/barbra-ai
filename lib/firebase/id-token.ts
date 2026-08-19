@@ -1,4 +1,5 @@
 import { createRemoteJWKSet, jwtVerify, type JWTPayload } from "jose";
+import { runtimeEnv } from "@/lib/runtime-env";
 
 const GOOGLE_SECURE_TOKEN_KEYS = createRemoteJWKSet(
   new URL("https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com"),
@@ -12,7 +13,7 @@ export type FirebaseIdToken = JWTPayload & {
 };
 
 export async function verifyFirebaseIdToken(token: string): Promise<FirebaseIdToken> {
-  const projectId = process.env.FIREBASE_PROJECT_ID ?? process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID;
+  const projectId = runtimeEnv("FIREBASE_PROJECT_ID") ?? runtimeEnv("NEXT_PUBLIC_FIREBASE_PROJECT_ID");
   if (!projectId) throw new Error("FIREBASE_PROJECT_ID_MISSING");
 
   const { payload } = await jwtVerify(token, GOOGLE_SECURE_TOKEN_KEYS, {

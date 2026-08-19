@@ -1,5 +1,6 @@
 import { BigQuery, type Query } from "@google-cloud/bigquery";
 import type { AnalyticsRepository } from "@/lib/data/analytics-repository";
+import { runtimeEnv } from "@/lib/runtime-env";
 import { resolveAnalyticsScope } from "@/lib/data/analytics-scope";
 import type {
   AdvisorInsight,
@@ -45,7 +46,7 @@ function isoDate(date: Date) {
 
 function reportingDate() {
   return new Intl.DateTimeFormat("en-CA", {
-    timeZone: process.env.BIGQUERY_REPORTING_TIMEZONE ?? "America/Bogota",
+    timeZone: runtimeEnv("BIGQUERY_REPORTING_TIMEZONE") ?? "America/Bogota",
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
@@ -138,7 +139,7 @@ function buildInsights(channels: ChannelBreakdown[], campaigns: CampaignPerforma
 }
 
 function bigQueryCredentials() {
-  const raw = process.env.BIGQUERY_SERVICE_ACCOUNT_JSON;
+  const raw = runtimeEnv("BIGQUERY_SERVICE_ACCOUNT_JSON");
   if (!raw) return undefined;
   const parsed = JSON.parse(raw) as { client_email?: string; private_key?: string };
   if (!parsed.client_email || !parsed.private_key) throw new Error("BIGQUERY_SERVICE_ACCOUNT_JSON is invalid");
@@ -150,8 +151,8 @@ export class BigQueryAnalyticsRepository implements AnalyticsRepository {
   private view: string;
 
   constructor() {
-    const projectId = process.env.GCP_PROJECT_ID;
-    const view = process.env.BIGQUERY_ANALYTICS_VIEW;
+    const projectId = runtimeEnv("GCP_PROJECT_ID");
+    const view = runtimeEnv("BIGQUERY_ANALYTICS_VIEW");
     if (!projectId || !view) {
       throw new Error("GCP_PROJECT_ID and BIGQUERY_ANALYTICS_VIEW are required for BigQuery analytics");
     }
@@ -161,7 +162,7 @@ export class BigQueryAnalyticsRepository implements AnalyticsRepository {
   }
 
   private async rows<T>(query: string, params: Query["params"]): Promise<T[]> {
-    const maximumBytesBilled = process.env.BIGQUERY_MAX_BYTES_BILLED ?? "250000000";
+    const maximumBytesBilled = runtimeEnv("BIGQUERY_MAX_BYTES_BILLED") ?? "250000000";
     const [job] = await this.client.createQueryJob({
       query,
       params,
@@ -267,7 +268,7 @@ export class BigQueryAnalyticsRepository implements AnalyticsRepository {
     }
 
     if (currencies.size > 1) throw new Error("ANALYTICS_MIXED_CURRENCIES");
-    const currency = [...currencies][0] ?? process.env.BIGQUERY_DEFAULT_CURRENCY ?? "COP";
+    const currency = [...currencies][0] ?? runtimeEnv("BIGQUERY_DEFAULT_CURRENCY") ?? "COP";
     const metrics: MetricSummary[] = [
       { id: "spend", label: "Inversión", value: current.spend, previousValue: previousValue(current.spend, previous.spend), format: "currency", positiveWhen: "up" },
       { id: "impressions", label: "Impresiones", value: current.impressions, previousValue: previousValue(current.impressions, previous.impressions), format: "number", positiveWhen: "up" },

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getRequestUser } from "@/lib/auth/server-session";
 import { DEMO_CAMPAIGNS, DEMO_ORGANIZATIONS, DEMO_PROJECTS, DEMO_USER } from "@/lib/domain/analytics";
+import { runtimeEnv } from "@/lib/runtime-env";
 
 export const dynamic = "force-dynamic";
 
@@ -18,7 +19,7 @@ function demoWorkspace(user = DEMO_USER) {
 export async function GET(request: Request) {
   try {
     const user = await getRequestUser(request);
-    if ((process.env.ANALYTICS_PROVIDER ?? "mock") === "mock") {
+    if ((runtimeEnv("ANALYTICS_PROVIDER") ?? "mock") === "mock") {
       return NextResponse.json({ data: demoWorkspace(user), mode: "firebase-auth" });
     }
 

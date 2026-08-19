@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getAnalyticsRepository } from "@/lib/data/get-analytics-repository";
 import { assertProjectAccess, getRequestUser } from "@/lib/auth/server-session";
+import { runtimeEnv } from "@/lib/runtime-env";
 
 export const dynamic = "force-dynamic";
 
@@ -29,7 +30,7 @@ export async function GET(request: Request) {
     const user = await getRequestUser(request);
     assertProjectAccess(user, parsed.data.organizationId, parsed.data.projectId);
     const data = await (await getAnalyticsRepository()).getDashboard(parsed.data);
-    return NextResponse.json({ data, provider: process.env.ANALYTICS_PROVIDER ?? "mock", user: { uid: user.uid, name: user.name, role: user.role } });
+    return NextResponse.json({ data, provider: runtimeEnv("ANALYTICS_PROVIDER") ?? "mock", user: { uid: user.uid, name: user.name, role: user.role } });
   } catch (error) {
     if (error instanceof Error && error.message === "UNAUTHENTICATED") {
       return NextResponse.json({ error: "Authentication required" }, { status: 401 });

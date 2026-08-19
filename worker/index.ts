@@ -22,6 +22,7 @@ interface Env {
 }
 
 function applyRuntimeEnvironment(env: Env) {
+  globalThis.__BARBRA_RUNTIME_ENV__ = env;
   for (const [key, value] of Object.entries(env)) {
     if (typeof value === "string") process.env[key] = value;
   }
