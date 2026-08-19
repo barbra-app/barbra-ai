@@ -19,7 +19,7 @@ export async function googleAccessToken(scope: string, credentialsJson?: string)
   }
 
   if (!credentialsJson) throw new Error("GOOGLE_SERVICE_ACCOUNT_JSON_MISSING");
-  const account = credentialsJson.trim().startsWith("-----BEGIN")
+  const account = !credentialsJson.trim().startsWith("{")
     ? { client_email: (await runtimeEnv("GOOGLE_SERVICE_ACCOUNT_EMAIL")) ?? "", private_key: credentialsJson }
     : JSON.parse(credentialsJson) as ServiceAccount;
   if (!account.client_email || !account.private_key) throw new Error("GOOGLE_SERVICE_ACCOUNT_JSON_INVALID");
