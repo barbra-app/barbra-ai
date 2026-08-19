@@ -18,7 +18,6 @@ function demoWorkspace(user = DEMO_USER) {
 export async function GET(request: Request) {
   try {
     const user = await getRequestUser(request);
-    if (!request.headers.get("authorization")) return NextResponse.json({ data: demoWorkspace(), mode: "demo" });
     if ((process.env.ANALYTICS_PROVIDER ?? "mock") === "mock") {
       return NextResponse.json({ data: demoWorkspace(user), mode: "firebase-auth" });
     }
