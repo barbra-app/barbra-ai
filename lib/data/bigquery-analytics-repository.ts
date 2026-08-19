@@ -311,6 +311,7 @@ export class BigQueryAnalyticsRepository implements AnalyticsRepository {
     const channels = new Map<string, { spend: number; conversions: number }>();
     const currencies = new Set<string>();
     let updatedAt = "";
+    let currentRows = 0;
 
     for (const row of rows) {
       const date = text(row.date);
@@ -322,6 +323,7 @@ export class BigQueryAnalyticsRepository implements AnalyticsRepository {
         continue;
       }
 
+      currentRows += 1;
       add(current, row);
       const daily = trendByDate.get(date) ?? emptyTotals();
       add(daily, row);
@@ -350,6 +352,7 @@ export class BigQueryAnalyticsRepository implements AnalyticsRepository {
       channels.set(row.source, channel);
     }
 
+    if (!currentRows) throw new Error("ANALYTICS_NO_DATA");
     if (currencies.size > 1) throw new Error("ANALYTICS_MIXED_CURRENCIES");
     const currency = [...currencies][0] ?? this.defaultCurrency;
     const metrics: MetricSummary[] = [
