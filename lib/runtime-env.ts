@@ -1,3 +1,5 @@
+import { env as cloudflareEnv } from "cloudflare:workers";
+
 type RuntimeEnvironment = Record<string, unknown>;
 
 declare global {
@@ -8,6 +10,7 @@ declare global {
 }
 
 export function runtimeEnv(key: string): string | undefined {
-  const runtimeValue = globalThis.__BARBRA_RUNTIME_ENV__?.[key];
+  const runtimeValue = (cloudflareEnv as RuntimeEnvironment | undefined)?.[key]
+    ?? globalThis.__BARBRA_RUNTIME_ENV__?.[key];
   return typeof runtimeValue === "string" ? runtimeValue : process.env[key];
 }
