@@ -16,7 +16,9 @@ export interface FirestoreDocument {
 async function serviceAccount() {
   const raw = await runtimeEnv("FIREBASE_SERVICE_ACCOUNT_JSON");
   if (!raw) return null;
-  const account = JSON.parse(raw) as ServiceAccount;
+  const account = raw.trim().startsWith("-----BEGIN")
+    ? { client_email: (await runtimeEnv("GOOGLE_SERVICE_ACCOUNT_EMAIL")) ?? "", private_key: raw, project_id: undefined }
+    : JSON.parse(raw) as ServiceAccount;
   if (!account.client_email || !account.private_key) throw new Error("FIREBASE_SERVICE_ACCOUNT_JSON_INVALID");
   return account;
 }
