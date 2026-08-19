@@ -1,24 +1,30 @@
 import { tool } from "ai";
 import { z } from "zod";
 import { getAnalyticsRepository } from "@/lib/data/get-analytics-repository";
-import type { DashboardSnapshot, DateRangePreset } from "@/lib/domain/analytics";
+import type { DashboardSnapshot, DateRange, DateRangePreset } from "@/lib/domain/analytics";
 
 export function getAnalyticsTools(context: {
   organizationId: string;
   projectId: string;
   campaignId?: string | null;
+  range: DateRange;
+  startDate?: string;
+  endDate?: string;
 }, auth?: { firestoreToken?: string }) {
-  const rangeSchema = z.enum(["7d", "30d", "90d"]).default("30d");
+  const rangeSchema = z.enum(["7d", "30d", "90d"]).optional();
   const cache = new Map<string, Promise<DashboardSnapshot>>();
-  const snapshot = (range: DateRangePreset, campaignId?: string | null) => {
+  const snapshot = (requestedRange?: DateRangePreset, campaignId?: string | null) => {
+    const range = context.range === "custom" ? "custom" : requestedRange ?? context.range;
     const selectedCampaignId = campaignId === undefined ? context.campaignId : campaignId;
-    const key = `${range}:${selectedCampaignId ?? "all"}`;
+    const key = `${range}:${context.startDate ?? ""}:${context.endDate ?? ""}:${selectedCampaignId ?? "all"}`;
     const existing = cache.get(key);
     if (existing) return existing;
     const pending = getAnalyticsRepository().then((repository) => repository.getDashboard({
       ...context,
       campaignId: selectedCampaignId,
       range,
+      startDate: range === "custom" ? context.startDate : undefined,
+      endDate: range === "custom" ? context.endDate : undefined,
     }, auth));
     cache.set(key, pending);
     return pending;

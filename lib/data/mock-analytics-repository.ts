@@ -15,6 +15,13 @@ const PROJECT_FACTORS: Record<string, number> = {
 
 const RANGE_DAYS = { "7d": 7, "30d": 30, "90d": 90 } as const;
 
+function queryDays(query: AnalyticsQuery) {
+  if (query.range === "custom" && query.startDate && query.endDate) {
+    return Math.max(1, Math.floor((Date.parse(query.endDate) - Date.parse(query.startDate)) / 86_400_000) + 1);
+  }
+  return RANGE_DAYS[query.range as keyof typeof RANGE_DAYS];
+}
+
 function round(value: number, decimals = 0) {
   const factor = 10 ** decimals;
   return Math.round(value * factor) / factor;
@@ -29,8 +36,8 @@ function seeded(seed: string) {
 }
 
 function buildTrend(query: AnalyticsQuery, factor: number): TrendPoint[] {
-  const days = RANGE_DAYS[query.range];
-  const points = query.range === "7d" ? 7 : query.range === "30d" ? 15 : 18;
+  const days = queryDays(query);
+  const points = Math.min(24, query.range === "7d" ? 7 : query.range === "30d" ? 15 : 18);
   const step = Math.max(1, Math.floor(days / points));
   const rand = seeded(`${query.projectId}:${query.campaignId ?? "all"}:${query.range}`);
   const end = new Date();
@@ -76,7 +83,8 @@ function buildCampaigns(query: AnalyticsQuery, factor: number): CampaignPerforma
 export class MockAnalyticsRepository implements AnalyticsRepository {
   async getDashboard(query: AnalyticsQuery): Promise<DashboardSnapshot> {
     const factor = PROJECT_FACTORS[query.projectId] ?? 1;
-    const rangeFactor = RANGE_DAYS[query.range] / 30;
+    const days = queryDays(query);
+    const rangeFactor = days / 30;
     const campaignFactor = query.campaignId ? 0.36 : 1;
     const spend = round(43890000 * factor * rangeFactor * campaignFactor);
     const impressions = round(2840000 * factor * rangeFactor * campaignFactor);
@@ -89,7 +97,9 @@ export class MockAnalyticsRepository implements AnalyticsRepository {
       query,
       currency: "COP",
       updatedAt: new Date().toISOString(),
-      periodLabel: query.range === "7d" ? "Últimos 7 días" : query.range === "30d" ? "Últimos 30 días" : "Últimos 90 días",
+      periodLabel: query.range === "custom" && query.startDate && query.endDate
+        ? `${query.startDate} – ${query.endDate}`
+        : `Últimos ${days} días`,
       metrics: [
         { id: "spend", label: "Inversión", value: spend, previousValue: spend / 1.084, format: "currency", positiveWhen: "up" },
         { id: "impressions", label: "Impresiones", value: impressions, previousValue: impressions / 1.126, format: "number", positiveWhen: "up" },

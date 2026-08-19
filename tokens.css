@@ -54,6 +54,7 @@
   --radius-round: 999rem;
   --rule: 1px solid var(--color-rule);
   --rule-strong: 1px solid var(--color-rule-strong);
+  --shadow-float: 0 1rem 2.5rem oklch(20% 0.012 80 / 0.12);
   --dur-fast: 140ms;
   --dur-panel: 220ms;
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);

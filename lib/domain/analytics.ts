@@ -1,4 +1,5 @@
 export type DateRangePreset = "7d" | "30d" | "90d";
+export type DateRange = DateRangePreset | "custom";
 export type CampaignStatus = "active" | "paused" | "completed";
 export type MemberRole = "admin" | "user";
 
@@ -40,7 +41,9 @@ export interface AnalyticsQuery {
   organizationId: string;
   projectId: string;
   campaignId?: string | null;
-  range: DateRangePreset;
+  range: DateRange;
+  startDate?: string;
+  endDate?: string;
 }
 
 export interface MetricSummary {

@@ -119,6 +119,28 @@ function reportingDate(timeZone: string) {
   }).format(new Date());
 }
 
+function queryWindow(query: AnalyticsQuery, timeZone: string) {
+  if (query.range === "custom") {
+    if (!query.startDate || !query.endDate) throw new Error("ANALYTICS_DATE_RANGE_INVALID");
+    const start = new Date(`${query.startDate}T00:00:00.000Z`);
+    const end = new Date(`${query.endDate}T00:00:00.000Z`);
+    const days = Math.floor((end.getTime() - start.getTime()) / 86_400_000) + 1;
+    if (!Number.isFinite(days) || days < 1) throw new Error("ANALYTICS_DATE_RANGE_INVALID");
+    return { start, end, days };
+  }
+  const days = RANGE_DAYS[query.range as keyof typeof RANGE_DAYS];
+  const end = new Date(`${reportingDate(timeZone)}T00:00:00.000Z`);
+  const start = new Date(end);
+  start.setUTCDate(end.getUTCDate() - days + 1);
+  return { start, end, days };
+}
+
+function periodLabel(query: AnalyticsQuery, start: Date, end: Date, days: number) {
+  if (query.range !== "custom") return `Últimos ${days} días`;
+  const formatter = new Intl.DateTimeFormat("es-CO", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
+  return `${formatter.format(start)} – ${formatter.format(end)}`;
+}
+
 function value(value: unknown): unknown {
   return value && typeof value === "object" && "value" in value
     ? (value as { value: unknown }).value
@@ -258,10 +280,7 @@ export class BigQueryAnalyticsRepository implements AnalyticsRepository {
   }
 
   async getDashboard(query: AnalyticsQuery, context?: { firestoreToken?: string }): Promise<DashboardSnapshot> {
-    const days = RANGE_DAYS[query.range];
-    const end = new Date(`${reportingDate(this.timeZone)}T00:00:00.000Z`);
-    const start = new Date(end);
-    start.setUTCDate(end.getUTCDate() - days + 1);
+    const { start, end, days } = queryWindow(query, this.timeZone);
     const previousEnd = new Date(start);
     previousEnd.setUTCDate(start.getUTCDate() - 1);
     const previousStart = new Date(previousEnd);
@@ -389,7 +408,7 @@ export class BigQueryAnalyticsRepository implements AnalyticsRepository {
       query,
       currency,
       updatedAt: updatedAt || new Date().toISOString(),
-      periodLabel: `Últimos ${days} días`,
+      periodLabel: periodLabel(query, start, end, days),
       metrics,
       trend,
       campaigns: campaignRows,

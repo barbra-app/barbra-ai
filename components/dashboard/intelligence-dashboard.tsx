@@ -34,6 +34,7 @@ import {
   type AppUser,
   type Campaign,
   type DashboardSnapshot,
+  type DateRange,
   type DateRangePreset,
   type MetricSummary,
   type Organization,
@@ -65,6 +66,21 @@ type DashboardIssue = {
   message: string;
 };
 
+function todayInBogota() {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Bogota",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+}
+
+function daysBefore(date: string, days: number) {
+  const value = new Date(`${date}T00:00:00.000Z`);
+  value.setUTCDate(value.getUTCDate() - days);
+  return value.toISOString().slice(0, 10);
+}
+
 export function IntelligenceDashboard() {
   const [workspace, setWorkspace] = useState<{ user: AppUser; organizations: Organization[]; projects: Project[]; campaigns: Campaign[] }>({
     user: DEMO_USER,
@@ -81,7 +97,13 @@ export function IntelligenceDashboard() {
   const [projectId, setProjectId] = useState("");
   const availableCampaigns = useMemo(() => workspace.campaigns.filter((campaign) => campaign.projectId === projectId), [projectId, workspace.campaigns]);
   const [campaignId, setCampaignId] = useState<string>("all");
-  const [range, setRange] = useState<DateRangePreset>("30d");
+  const [range, setRange] = useState<DateRange>("30d");
+  const today = useMemo(todayInBogota, []);
+  const [calendarOpen, setCalendarOpen] = useState(false);
+  const [customStartDate, setCustomStartDate] = useState(() => daysBefore(todayInBogota(), 89));
+  const [customEndDate, setCustomEndDate] = useState(today);
+  const [draftStartDate, setDraftStartDate] = useState(customStartDate);
+  const [draftEndDate, setDraftEndDate] = useState(customEndDate);
   const [snapshot, setSnapshot] = useState<DashboardSnapshot | null>(null);
   const [advisorOpen, setAdvisorOpen] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -131,6 +153,10 @@ export function IntelligenceDashboard() {
     const controller = new AbortController();
     const params = new URLSearchParams({ organizationId, projectId, range });
     if (campaignId !== "all") params.set("campaignId", campaignId);
+    if (range === "custom") {
+      params.set("startDate", customStartDate);
+      params.set("endDate", customEndDate);
+    }
     setLoading(true);
     setIssue(null);
     getFirebaseIdToken()
@@ -164,7 +190,15 @@ export function IntelligenceDashboard() {
       })
       .finally(() => setLoading(false));
     return () => controller.abort();
-  }, [workspaceReady, organizationId, projectId, campaignId, range]);
+  }, [workspaceReady, organizationId, projectId, campaignId, range, customStartDate, customEndDate]);
+
+  function applyCustomRange() {
+    if (!draftStartDate || !draftEndDate || draftStartDate > draftEndDate) return;
+    setCustomStartDate(draftStartDate);
+    setCustomEndDate(draftEndDate);
+    setRange("custom");
+    setCalendarOpen(false);
+  }
 
   const project = availableProjects.find((item) => item.id === projectId);
   const campaign = availableCampaigns.find((item) => item.id === campaignId);
@@ -215,11 +249,34 @@ export function IntelligenceDashboard() {
           <LabeledSelect label="Proyecto" value={projectId} onChange={setProjectId} options={availableProjects.map((item) => ({ value: item.id, label: item.name }))} />
           <LabeledSelect label="Campaña" value={campaignId} onChange={setCampaignId} options={[{ value: "all", label: "Todas las campañas" }, ...availableCampaigns.map((item) => ({ value: item.id, label: item.name }))]} />
         </div>
-        <div className="range-control" aria-label="Rango de fechas">
-          {(["7d", "30d", "90d"] as DateRangePreset[]).map((item) => (
-            <button key={item} className={range === item ? "active" : ""} onClick={() => setRange(item)}>{item.replace("d", " días")}</button>
-          ))}
-          <button className="calendar-button" aria-label="Elegir fechas"><CalendarDays className="size-4" /></button>
+        <div className="range-picker">
+          <div className="range-control" aria-label="Rango de fechas">
+            {(["7d", "30d", "90d"] as DateRangePreset[]).map((item) => (
+              <button key={item} className={range === item ? "active" : ""} onClick={() => { setRange(item); setCalendarOpen(false); }}>{item.replace("d", " días")}</button>
+            ))}
+            <button
+              className={cn("calendar-button", range === "custom" && "active")}
+              aria-label="Elegir fechas"
+              aria-expanded={calendarOpen}
+              onClick={() => setCalendarOpen((open) => !open)}
+            >
+              <CalendarDays className="size-4" />
+            </button>
+          </div>
+          {calendarOpen && (
+            <div className="date-range-popover" role="dialog" aria-label="Elegir rango de fechas">
+              <div className="date-range-heading"><strong>Rango personalizado</strong><span>Consulta el histórico disponible</span></div>
+              <div className="date-range-fields">
+                <label><span>Desde</span><input type="date" value={draftStartDate} max={draftEndDate || today} onInput={(event) => setDraftStartDate(event.currentTarget.value)} /></label>
+                <label><span>Hasta</span><input type="date" value={draftEndDate} min={draftStartDate} max={today} onInput={(event) => setDraftEndDate(event.currentTarget.value)} /></label>
+              </div>
+              {draftStartDate > draftEndDate && <p className="date-range-error">La fecha inicial debe ser anterior a la final.</p>}
+              <div className="date-range-actions">
+                <button onClick={() => setCalendarOpen(false)}>Cancelar</button>
+                <button className="primary" disabled={!draftStartDate || !draftEndDate || draftStartDate > draftEndDate} onClick={applyCustomRange}>Aplicar</button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -230,7 +287,9 @@ export function IntelligenceDashboard() {
               <h1>{campaign ? campaign.name : project?.name}</h1>
               <p>
                 {snapshot?.periodLabel
-                  ?? (issue?.kind === "empty" ? `Últimos ${range.replace("d", "")} días` : "Consultando periodo")}
+                  ?? (issue?.kind === "empty"
+                    ? range === "custom" ? `${customStartDate} – ${customEndDate}` : `Últimos ${range.replace("d", "")} días`
+                    : "Consultando periodo")}
               </p>
             </div>
             <div className={cn("data-status", issue && "is-neutral")} aria-live="polite">
@@ -380,11 +439,11 @@ function DashboardEmptyState({
   onTryNinetyDays,
 }: {
   campaignSelected: boolean;
-  range: DateRangePreset;
+  range: DateRange;
   onShowAllCampaigns: () => void;
   onTryNinetyDays: () => void;
 }) {
-  const days = range.replace("d", "");
+  const period = range === "custom" ? "en el rango seleccionado" : `en los últimos ${range.replace("d", "")} días`;
 
   return (
     <section className="dashboard-empty" aria-live="polite">
@@ -392,7 +451,7 @@ function DashboardEmptyState({
       <div className="dashboard-empty-copy">
         <strong>Sin actividad en este periodo</strong>
         <p>
-          {campaignSelected ? "Esta campaña" : "Esta selección"} no registró métricas en los últimos {days} días.
+          {campaignSelected ? "Esta campaña" : "Esta selección"} no registró métricas {period}.
         </p>
       </div>
       <div className="dashboard-empty-actions">
