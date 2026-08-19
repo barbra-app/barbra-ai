@@ -41,13 +41,12 @@ export async function googleAccessToken(scope: string, credentialsJson?: string)
   const cached = tokenCache.get(scope);
   if (cached && cached.expiresAt > Date.now() + 60_000) return cached.token;
 
-  const explicitToken = await runtimeEnv("GOOGLE_API_ACCESS_TOKEN");
-  if (explicitToken) {
+  if (!credentialsJson) {
+    const explicitToken = await runtimeEnv("GOOGLE_API_ACCESS_TOKEN");
+    if (!explicitToken) throw new Error("GOOGLE_SERVICE_ACCOUNT_JSON_MISSING");
     tokenCache.set(scope, { token: explicitToken, expiresAt: Date.now() + 45 * 60 * 1000 });
     return explicitToken;
   }
-
-  if (!credentialsJson) throw new Error("GOOGLE_SERVICE_ACCOUNT_JSON_MISSING");
   const account = await parseServiceAccount(credentialsJson);
   if (!account.client_email || !account.private_key) throw new Error("GOOGLE_SERVICE_ACCOUNT_JSON_INVALID");
   const now = Math.floor(Date.now() / 1000);
