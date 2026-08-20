@@ -96,7 +96,7 @@ function metric(snapshot, id) {
   return result;
 }
 
-function assertCommon(result, expectedTool) {
+function assertCommon(result, expectedTool, expectedPresentation) {
   if (result.inputs.length !== 1 || result.outputs.length !== 1) {
     throw new Error(`Expected exactly one tool call; got ${result.inputs.length} inputs and ${result.outputs.length} outputs`);
   }
@@ -104,7 +104,10 @@ function assertCommon(result, expectedTool) {
     throw new Error(`Expected ${expectedTool}; got ${result.inputs[0].toolName}`);
   }
   const output = result.outputs[0]?.output;
-  if (result.text) throw new Error("The model emitted free-form text instead of the verified UI narrative");
+  if (!result.text) throw new Error("The model did not add a conversational explanation after the verified data");
+  if (expectedPresentation && result.inputs[0].input.presentation !== expectedPresentation) {
+    throw new Error(`Expected presentation=${expectedPresentation}; got ${result.inputs[0].input.presentation}`);
+  }
   if (!output?.verifiedInsight) throw new Error("Tool output is missing its deterministic verified insight");
 }
 
@@ -174,6 +177,7 @@ const cases = [
     question: "¿Cuánto invertimos y cuál fue el ROAS?",
     tool: "get_dashboard_snapshot",
     visual: "KPI cards + area trend",
+    presentation: "compact",
     validate: assertSnapshot,
   },
   {
@@ -181,6 +185,7 @@ const cases = [
     question: "Muéstrame la tendencia de inversión y revenue.",
     tool: "get_dashboard_snapshot",
     visual: "Dual area chart",
+    presentation: "visual",
     validate: assertSnapshot,
   },
   {
@@ -188,6 +193,7 @@ const cases = [
     question: "¿Qué campaña es candidata para escalar?",
     tool: "get_campaign_performance",
     visual: "ROAS bar ranking + details",
+    presentation: "visual",
     sortBy: "roas",
     validate: (result, reference) => {
       assertCampaigns(result, reference, "roas");
@@ -206,6 +212,7 @@ const cases = [
     question: "¿Cuál campaña tiene el CPA más bajo?",
     tool: "get_campaign_performance",
     visual: "CPA bar ranking + details",
+    presentation: "compact",
     sortBy: "cpa",
     validate: (result, reference) => assertCampaigns(result, reference, "cpa"),
   },
@@ -214,6 +221,7 @@ const cases = [
     question: "Ordena las campañas por volumen de conversiones.",
     tool: "get_campaign_performance",
     visual: "Conversions bar ranking + details",
+    presentation: "visual",
     sortBy: "conversions",
     validate: (result, reference) => assertCampaigns(result, reference, "conversions"),
   },
@@ -222,6 +230,7 @@ const cases = [
     question: "Compara la eficiencia por canal.",
     tool: "get_channel_mix",
     visual: "Channel shares chart + breakdown",
+    presentation: "visual",
     validate: assertChannels,
   },
   {
@@ -229,6 +238,7 @@ const cases = [
     question: "Resume el rendimiento de la campaña seleccionada.",
     tool: "get_dashboard_snapshot",
     visual: "Campaign-scoped KPIs + area trend",
+    presentation: "compact",
     scope: "campaign",
     validate: assertSnapshot,
   },
@@ -237,6 +247,7 @@ const cases = [
     question: "Analiza la tendencia del rango seleccionado.",
     tool: "get_dashboard_snapshot",
     visual: "Custom-range KPIs + area trend",
+    presentation: "visual",
     scope: "custom",
     validate: assertSnapshot,
   },
@@ -245,11 +256,22 @@ const cases = [
     question: "¿Cuál ha sido la mejor campaña de todos los tiempos?",
     tool: "get_campaign_performance",
     visual: "All-time ROAS ranking + details",
+    presentation: "visual",
     scope: "all",
     sortBy: "roas",
     validate: (result, reference) => {
       if (result.inputs[0].input.range !== "all") throw new Error("The model did not request all available history");
       assertCampaigns(result, reference, "roas", 1);
+    },
+  },
+  {
+    name: "Conversación sin datos",
+    question: "Hola, ¿qué tipo de preguntas puedo hacerte?",
+    tool: null,
+    visual: "Conversational answer",
+    validate: (result) => {
+      if (result.inputs.length || result.outputs.length) throw new Error("A capability question should not query analytics");
+      if (!result.text || result.text.length < 20) throw new Error("Conversational answer is missing or too short");
     },
   },
 ];
@@ -303,7 +325,7 @@ async function main() {
     try {
       const { context, reference } = await scopedReference(testCase);
       const result = await ask(token, context, testCase.question);
-      assertCommon(result, testCase.tool);
+      if (testCase.tool) assertCommon(result, testCase.tool, testCase.presentation);
       testCase.validate(result, reference);
       report.push({ case: testCase.name, tool: testCase.tool, visual: testCase.visual, result: "PASS", ms: Date.now() - startedAt });
     } catch (error) {

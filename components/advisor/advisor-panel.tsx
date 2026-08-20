@@ -159,10 +159,15 @@ function AdvisorPart({ part }: { part: any }) {
   if (part.state === "output-error") return <div className="tool-error"><CircleAlert className="size-3.5" /> No pude completar este análisis.</div>;
   if (part.state !== "output-available") return <div className="tool-loading"><span /> {name.replaceAll("_", " ")}</div>;
   const data: any = normalizeOutput(part.output);
+  if (data?.presentation === "compact") return <VerifiedDataNote period={data.periodLabel} />;
   if (name === "get_dashboard_snapshot") return <SnapshotAnswer snapshot={data} />;
   if (name === "get_campaign_performance") return <CampaignAnswer data={data} />;
   if (name === "get_channel_mix") return <ChannelAnswer data={data} />;
   return null;
+}
+
+function VerifiedDataNote({ period }: { period?: string }) {
+  return <div className="verified-data-note"><span className="status-dot" /> Datos verificados{period ? ` · ${period}` : ""}</div>;
 }
 
 function SnapshotAnswer({ snapshot }: { snapshot: DashboardSnapshot }) {

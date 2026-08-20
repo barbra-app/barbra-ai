@@ -7,6 +7,7 @@ type ToolPeriod = {
   range?: DateRange;
   startDate?: string;
   endDate?: string;
+  presentation?: "compact" | "visual";
 };
 
 function metricValue(snapshot: DashboardSnapshot, id: string) {
@@ -46,6 +47,7 @@ export function getAnalyticsTools(context: {
     range: z.enum(["7d", "30d", "90d", "all", "custom"]).optional().describe("Period to query. Use all for all available history and custom with startDate/endDate for explicit dates."),
     startDate: z.string().date().optional().describe("Inclusive YYYY-MM-DD start date; required when range is custom."),
     endDate: z.string().date().optional().describe("Inclusive YYYY-MM-DD end date; required when range is custom."),
+    presentation: z.enum(["compact", "visual"]).default("compact").describe("Use visual for requests to show, compare, rank, break down or explore. Use compact for a direct question answered best in prose."),
   };
   const campaignSortSchema = z.enum(["spend", "conversions", "cpa", "roas"]);
   const cache = new Map<string, Promise<DashboardSnapshot>>();
@@ -77,7 +79,7 @@ export function getAnalyticsTools(context: {
       inputSchema: z.object(periodSchema),
       execute: async (period) => {
         const data = await snapshot(period);
-        return { ...data, verifiedInsight: snapshotInsight(data) };
+        return { ...data, presentation: period.presentation, verifiedInsight: snapshotInsight(data) };
       },
     }),
     get_campaign_performance: tool({
@@ -87,7 +89,7 @@ export function getAnalyticsTools(context: {
         limit: z.number().int().min(1).max(12).default(8),
         sortBy: campaignSortSchema.default("spend"),
       }),
-      execute: async ({ range, startDate, endDate, limit, sortBy }) => {
+      execute: async ({ range, startDate, endDate, presentation, limit, sortBy }) => {
         const data = await snapshot({ range, startDate, endDate }, null);
         const eligible = data.campaigns.filter((row) => row.spend > 0);
         const sorted = [...eligible].sort((left, right) => {
@@ -107,6 +109,8 @@ export function getAnalyticsTools(context: {
         return {
           rows: sorted.slice(0, limit),
           sortBy,
+          presentation,
+          periodLabel: data.periodLabel,
           summary: { topRoas: byRoas, lowestCpa: byCpa, highestConversions: byConversions, scaleCandidate },
           verifiedInsight: campaignInsight(sortBy, sorted.slice(0, limit), scaleCandidate),
           updatedAt: data.updatedAt,
@@ -129,6 +133,8 @@ export function getAnalyticsTools(context: {
         }));
         return {
           rows,
+          presentation: period.presentation,
+          periodLabel: data.periodLabel,
           totals: { spend: totalSpend, conversions: totalConversions },
           channelCount: rows.length,
           verifiedInsight: rows.length === 1
