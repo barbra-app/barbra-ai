@@ -1,4 +1,4 @@
-import { DEMO_USER, type AppUser } from "@/lib/domain/analytics";
+import type { AppUser } from "@/lib/domain/analytics";
 import { verifyFirebaseIdToken } from "@/lib/firebase/id-token";
 import { runtimeEnv } from "@/lib/runtime-env";
 
@@ -9,11 +9,7 @@ export function requestBearerToken(request: Request) {
 
 export async function getRequestUser(request: Request): Promise<AppUser> {
   const token = requestBearerToken(request);
-  const authRequired = await runtimeEnv("REQUIRE_FIREBASE_AUTH") === "true";
-  if (!token) {
-    if (authRequired) throw new Error("UNAUTHENTICATED");
-    return DEMO_USER;
-  }
+  if (!token) throw new Error("UNAUTHENTICATED");
 
   const decoded = await verifyFirebaseIdToken(token);
   // Firestore is the canonical authorization source. Firebase custom claims

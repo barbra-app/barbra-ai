@@ -1,29 +1,13 @@
 import { NextResponse } from "next/server";
 import { getRequestUser, requestBearerToken } from "@/lib/auth/server-session";
-import { DEMO_CAMPAIGNS, DEMO_ORGANIZATIONS, DEMO_PROJECTS, DEMO_USER } from "@/lib/domain/analytics";
 import { runtimeEnv } from "@/lib/runtime-env";
 import { humanizeCampaignName } from "@/lib/campaign-name";
 
 export const dynamic = "force-dynamic";
 
-function demoWorkspace(user = DEMO_USER) {
-  const organizations = user.role === "admin"
-    ? DEMO_ORGANIZATIONS
-    : DEMO_ORGANIZATIONS.filter((organization) => organization.id === user.organizationId);
-  const organizationIds = new Set(organizations.map((organization) => organization.id));
-  const projects = DEMO_PROJECTS.filter((project) => organizationIds.has(project.organizationId) && (user.role === "admin" || user.projectIds.length === 0 || user.projectIds.includes(project.id)));
-  const projectIds = new Set(projects.map((project) => project.id));
-  const campaigns = DEMO_CAMPAIGNS.filter((campaign) => projectIds.has(campaign.projectId));
-  return { user, organizations, projects, campaigns };
-}
-
 export async function GET(request: Request) {
   try {
     const user = await getRequestUser(request);
-    if (((await runtimeEnv("ANALYTICS_PROVIDER")) ?? "mock") === "mock") {
-      return NextResponse.json({ data: demoWorkspace(user), mode: "firebase-auth" });
-    }
-
     const { getFirestoreDocument, listFirestoreDocuments, queryFirestoreDocuments } = await import("@/lib/firebase/firestore-rest");
     const useServiceAccount = await runtimeEnv("FIRESTORE_USE_SERVICE_ACCOUNT") === "true";
     const firebaseIdToken = useServiceAccount ? undefined : requestBearerToken(request) ?? undefined;

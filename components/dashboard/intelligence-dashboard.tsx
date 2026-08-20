@@ -28,9 +28,9 @@ import {
   YAxis,
 } from "recharts";
 import { AdvisorPanel } from "@/components/advisor/advisor-panel";
+import { DashboardSkeleton, IntelligenceDashboardSkeleton } from "@/components/dashboard/intelligence-dashboard-skeleton";
 import { UserProfileMenu } from "@/components/profile/user-profile-menu";
 import {
-  DEMO_USER,
   type AppUser,
   type Campaign,
   type DashboardSnapshot,
@@ -82,20 +82,16 @@ function daysBefore(date: string, days: number) {
 }
 
 export function IntelligenceDashboard() {
-  const [workspace, setWorkspace] = useState<{ user: AppUser; organizations: Organization[]; projects: Project[]; campaigns: Campaign[] }>({
-    user: DEMO_USER,
-    organizations: [],
-    projects: [],
-    campaigns: [],
-  });
+  const [workspace, setWorkspace] = useState<{ user: AppUser; organizations: Organization[]; projects: Project[]; campaigns: Campaign[] } | null>(null);
   const [workspaceReady, setWorkspaceReady] = useState(false);
+  const [workspaceError, setWorkspaceError] = useState<string | null>(null);
   const [organizationId, setOrganizationId] = useState("");
   const availableProjects = useMemo(
-    () => workspace.projects.filter((project) => project.organizationId === organizationId),
-    [organizationId, workspace.projects],
+    () => workspace?.projects.filter((project) => project.organizationId === organizationId) ?? [],
+    [organizationId, workspace],
   );
   const [projectId, setProjectId] = useState("");
-  const availableCampaigns = useMemo(() => workspace.campaigns.filter((campaign) => campaign.projectId === projectId), [projectId, workspace.campaigns]);
+  const availableCampaigns = useMemo(() => workspace?.campaigns.filter((campaign) => campaign.projectId === projectId) ?? [], [projectId, workspace]);
   const [campaignId, setCampaignId] = useState<string>("all");
   const [range, setRange] = useState<DateRange>("30d");
   const today = useMemo(todayInBogota, []);
@@ -130,12 +126,14 @@ export function IntelligenceDashboard() {
         setOrganizationId(nextOrganizationId);
         setProjectId(nextProjectId);
         setCampaignId("all");
+        setWorkspaceError(null);
         setIssue(null);
         setWorkspaceReady(true);
       })
       .catch((reason) => {
         if (reason?.name !== "AbortError") {
-          setIssue({ kind: "error", message: reason instanceof Error ? reason.message : String(reason) });
+          setWorkspaceError(reason instanceof Error ? reason.message : String(reason));
+          setWorkspaceReady(true);
           setLoading(false);
         }
       });
@@ -202,7 +200,10 @@ export function IntelligenceDashboard() {
 
   const project = availableProjects.find((item) => item.id === projectId);
   const campaign = availableCampaigns.find((item) => item.id === campaignId);
-  const organization = workspace.organizations.find((item) => item.id === organizationId);
+  const organization = workspace?.organizations.find((item) => item.id === organizationId);
+
+  if (!workspaceReady) return <IntelligenceDashboardSkeleton />;
+  if (!workspace) return <WorkspaceLoadError message={workspaceError ?? "No fue posible cargar tus accesos"} />;
 
   return (
     <div className={cn("intelligence-shell", advisorOpen && "advisor-is-open")}>
@@ -428,10 +429,6 @@ function ChannelMix({ snapshot }: { snapshot: DashboardSnapshot }) {
   );
 }
 
-function DashboardSkeleton() {
-  return <div className="dashboard-skeleton"><div className="skeleton-kpis">{Array.from({ length: 4 }, (_, index) => <span key={index} />)}</div><div className="skeleton-chart" /></div>;
-}
-
 function DashboardEmptyState({
   campaignSelected,
   range,
@@ -464,4 +461,17 @@ function DashboardEmptyState({
 
 function DashboardError({ message }: { message: string }) {
   return <div className="dashboard-error"><div><strong>No pudimos cargar los datos</strong><p>{message}</p></div><button onClick={() => location.reload()}><RefreshCw className="size-4" />Reintentar</button></div>;
+}
+
+function WorkspaceLoadError({ message }: { message: string }) {
+  return (
+    <div className="intelligence-shell">
+      <header className="intelligence-topbar">
+        <div className="brand-lockup"><img src="/barbra-logo.png" width="126" height="20" alt="Barbra" /></div>
+      </header>
+      <main className="dashboard-main workspace-load-error">
+        <DashboardError message={message} />
+      </main>
+    </div>
+  );
 }

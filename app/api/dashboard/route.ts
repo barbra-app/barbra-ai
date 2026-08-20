@@ -44,7 +44,7 @@ export async function GET(request: Request) {
     const data = await (await getAnalyticsRepository()).getDashboard(parsed.data, {
       firestoreToken: useServiceAccount ? undefined : requestBearerToken(request) ?? undefined,
     });
-    return NextResponse.json({ data, provider: (await runtimeEnv("ANALYTICS_PROVIDER")) ?? "mock", user: { uid: user.uid, name: user.name, role: user.role } });
+    return NextResponse.json({ data, provider: "bigquery", user: { uid: user.uid, name: user.name, role: user.role } });
   } catch (error) {
     if (error instanceof Error && error.message === "UNAUTHENTICATED") {
       return NextResponse.json({ error: "Authentication required" }, { status: 401 });
@@ -60,6 +60,7 @@ export async function GET(request: Request) {
         ANALYTICS_DATE_RANGE_INVALID: "Selecciona un rango de fechas válido",
         ANALYTICS_NO_DATA: "No hay datos normalizados para esta selección y periodo",
         ANALYTICS_MIXED_CURRENCIES: "La selección contiene monedas distintas que todavía no han sido convertidas",
+        ANALYTICS_PROVIDER_NOT_CONFIGURED: "La conexión analítica aún no está configurada",
       };
       return NextResponse.json(
         {

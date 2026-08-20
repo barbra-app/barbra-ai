@@ -1,5 +1,14 @@
 [
   {
+    "date": "2026-08-20",
+    "macrostructure": "Workbench",
+    "theme": "Barbra monochrome chrome with semantic data spectrum",
+    "genre": "modern-minimal",
+    "enrichment": "none",
+    "navigation": "existing application chrome preserved",
+    "brief": "Replace every pre-authentication and workspace mock state with a structural loading skeleton backed only by real Firebase and BigQuery data."
+  },
+  {
     "date": "2026-08-19",
     "macrostructure": "Workbench",
     "theme": "Barbra monochrome chrome with semantic data spectrum",
