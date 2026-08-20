@@ -10,7 +10,7 @@ const QuerySchema = z.object({
   organizationId: z.string().min(1).max(120),
   projectId: z.string().min(1).max(120),
   campaignId: z.string().min(1).max(120).nullable().optional(),
-  range: z.enum(["7d", "30d", "90d", "custom"]).default("30d"),
+  range: z.enum(["7d", "30d", "90d", "all", "custom"]).default("30d"),
   startDate: z.string().date().optional(),
   endDate: z.string().date().optional(),
 }).superRefine((value, context) => {

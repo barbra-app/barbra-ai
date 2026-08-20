@@ -58,6 +58,7 @@ interface BigQueryResponse {
   jobReference?: { jobId?: string; location?: string };
   schema?: { fields?: BigQueryField[] };
   rows?: { f?: { v: unknown }[] }[];
+  pageToken?: string;
 }
 
 function bigQueryParameters(params: { clientId: string; startDate: string; endDate: string; previousStartDate: string; campaigns: CampaignAnalyticsScope[] }) {
@@ -128,6 +129,12 @@ function queryWindow(query: AnalyticsQuery, timeZone: string) {
     if (!Number.isFinite(days) || days < 1) throw new Error("ANALYTICS_DATE_RANGE_INVALID");
     return { start, end, days };
   }
+  if (query.range === "all") {
+    const start = new Date("2000-01-01T00:00:00.000Z");
+    const end = new Date(`${reportingDate(timeZone)}T00:00:00.000Z`);
+    const days = Math.floor((end.getTime() - start.getTime()) / 86_400_000) + 1;
+    return { start, end, days };
+  }
   const days = RANGE_DAYS[query.range as keyof typeof RANGE_DAYS];
   const end = new Date(`${reportingDate(timeZone)}T00:00:00.000Z`);
   const start = new Date(end);
@@ -136,6 +143,7 @@ function queryWindow(query: AnalyticsQuery, timeZone: string) {
 }
 
 function periodLabel(query: AnalyticsQuery, start: Date, end: Date, days: number) {
+  if (query.range === "all") return "Todo el historial disponible";
   if (query.range !== "custom") return `Últimos ${days} días`;
   const formatter = new Intl.DateTimeFormat("es-CO", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
   return `${formatter.format(start)} – ${formatter.format(end)}`;
@@ -276,7 +284,18 @@ export class BigQueryAnalyticsRepository implements AnalyticsRepository {
       }
     }
     if (!payload.jobComplete) throw new Error("BIGQUERY_QUERY_TIMEOUT");
-    return decodeBigQueryRows<T>(payload);
+    const rows = decodeBigQueryRows<T>(payload);
+    let pageToken = payload.pageToken;
+    const jobId = payload.jobReference?.jobId;
+    const location = payload.jobReference?.location ? `&location=${encodeURIComponent(payload.jobReference.location)}` : "";
+    while (pageToken && jobId) {
+      const page = await fetch(`https://bigquery.googleapis.com/bigquery/v2/projects/${encodeURIComponent(this.projectId)}/queries/${encodeURIComponent(jobId)}?maxResults=10000&pageToken=${encodeURIComponent(pageToken)}${location}`, { headers: { authorization: `Bearer ${token}` } });
+      if (!page.ok) throw new Error(`BIGQUERY_RESULTS_FAILED_${page.status}`);
+      const pagePayload = await page.json() as BigQueryResponse;
+      rows.push(...decodeBigQueryRows<T>({ ...pagePayload, schema: pagePayload.schema ?? payload.schema }));
+      pageToken = pagePayload.pageToken;
+    }
+    return rows;
   }
 
   async getDashboard(query: AnalyticsQuery, context?: { firestoreToken?: string }): Promise<DashboardSnapshot> {
@@ -285,6 +304,7 @@ export class BigQueryAnalyticsRepository implements AnalyticsRepository {
     previousEnd.setUTCDate(start.getUTCDate() - 1);
     const previousStart = new Date(previousEnd);
     previousStart.setUTCDate(previousEnd.getUTCDate() - days + 1);
+    if (query.range === "all") previousStart.setTime(start.getTime());
 
     const scope = await resolveAnalyticsScope(query, context?.firestoreToken);
     const params = {

@@ -1,14 +1,12 @@
 import fs from "node:fs";
 import process from "node:process";
+import { cert, getApps, initializeApp } from "firebase-admin/app";
+import { getAuth } from "firebase-admin/auth";
+import { getFirestore } from "firebase-admin/firestore";
 
 const baseUrl = process.env.QA_BASE_URL || "http://localhost:3000";
 const email = process.env.QA_FIREBASE_EMAIL;
 const password = process.env.QA_FIREBASE_PASSWORD;
-
-if (!email || !password) {
-  console.error("Set QA_FIREBASE_EMAIL and QA_FIREBASE_PASSWORD before running AI QA.");
-  process.exit(1);
-}
 
 function readLocalEnv(name) {
   const source = fs.readFileSync(new URL("../.env.local", import.meta.url), "utf8");
@@ -27,6 +25,25 @@ async function jsonFetch(url, init = {}) {
 
 async function firebaseToken() {
   const apiKey = readLocalEnv("NEXT_PUBLIC_FIREBASE_API_KEY");
+  if (!email || !password) {
+    const credentials = JSON.parse(readLocalEnv("FIREBASE_SERVICE_ACCOUNT_JSON"));
+    if (!getApps().length) initializeApp({ credential: cert(credentials) });
+    const auth = getAuth();
+    const targetEmail = process.env.QA_FIREBASE_EMAIL || "demo@barbra.com.co";
+    const profiles = await getFirestore().collection("users").where("email", "==", targetEmail).limit(1).get();
+    const profile = profiles.docs[0];
+    if (!profile) throw new Error(`QA profile ${targetEmail} was not found in Firestore`);
+    const token = await auth.createCustomToken(profile.id);
+    const payload = await jsonFetch(
+      `https://identitytoolkit.googleapis.com/v1/accounts:signInWithCustomToken?key=${encodeURIComponent(apiKey)}`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ token, returnSecureToken: true }),
+      },
+    );
+    return payload.idToken;
+  }
   const payload = await jsonFetch(
     `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${encodeURIComponent(apiKey)}`,
     {
@@ -115,12 +132,12 @@ function expectedCampaigns(reference, sortBy) {
   });
 }
 
-function assertCampaigns(result, reference, sortBy) {
+function assertCampaigns(result, reference, sortBy, minimumRows = 4) {
   const input = result.inputs[0].input;
   const output = result.outputs[0].output;
   if (input.sortBy !== sortBy || output.sortBy !== sortBy) throw new Error(`Expected campaign sortBy=${sortBy}`);
   const expected = expectedCampaigns(reference, sortBy).slice(0, output.rows.length);
-  if (output.rows.length < 4) throw new Error("Campaign visual needs at least four rows");
+  if (output.rows.length < minimumRows) throw new Error(`Campaign visual needs at least ${minimumRows} row(s)`);
   output.rows.forEach((row, index) => {
     const truth = expected[index];
     if (!truth || row.id !== truth.id || row.name !== truth.name) throw new Error(`Campaign rank ${index + 1} differs from BigQuery reference`);
@@ -223,6 +240,18 @@ const cases = [
     scope: "custom",
     validate: assertSnapshot,
   },
+  {
+    name: "Mejor campaña histórica",
+    question: "¿Cuál ha sido la mejor campaña de todos los tiempos?",
+    tool: "get_campaign_performance",
+    visual: "All-time ROAS ranking + details",
+    scope: "all",
+    sortBy: "roas",
+    validate: (result, reference) => {
+      if (result.inputs[0].input.range !== "all") throw new Error("The model did not request all available history");
+      assertCampaigns(result, reference, "roas", 1);
+    },
+  },
 ];
 
 async function main() {
@@ -254,14 +283,15 @@ async function main() {
       context.endDate = baseReference.trend.at(-1)?.date;
       if (!context.startDate || !context.endDate) throw new Error("No trend dates are available for custom-range QA");
     }
+    const referenceContext = testCase.scope === "all" ? { ...context, range: "all" } : context;
     const params = new URLSearchParams({
-      organizationId: context.organizationId,
-      projectId: context.projectId,
-      range: context.range,
+      organizationId: referenceContext.organizationId,
+      projectId: referenceContext.projectId,
+      range: referenceContext.range,
     });
-    if (context.campaignId) params.set("campaignId", context.campaignId);
-    if (context.startDate) params.set("startDate", context.startDate);
-    if (context.endDate) params.set("endDate", context.endDate);
+    if (referenceContext.campaignId) params.set("campaignId", referenceContext.campaignId);
+    if (referenceContext.startDate) params.set("startDate", referenceContext.startDate);
+    if (referenceContext.endDate) params.set("endDate", referenceContext.endDate);
     const payload = await jsonFetch(`${baseUrl}/api/dashboard?${params}`, { headers: auth });
     if (payload.provider !== "bigquery") throw new Error("Scoped dashboard reference is not backed by BigQuery");
     return { context, reference: payload.data };

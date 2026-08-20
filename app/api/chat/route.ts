@@ -12,12 +12,12 @@ const RequestSchema = z.object({
   organizationId: z.string().min(1).max(120),
   projectId: z.string().min(1).max(120),
   campaignId: z.string().min(1).max(120).nullable().optional(),
-  range: z.enum(["7d", "30d", "90d", "custom"]).default("30d"),
+  range: z.enum(["7d", "30d", "90d", "all", "custom"]).default("30d"),
   startDate: z.string().date().optional(),
   endDate: z.string().date().optional(),
 });
 
-function buildSystemPrompt(context: { organizationId: string; projectId: string; campaignId?: string | null; range: "7d" | "30d" | "90d" | "custom"; startDate?: string; endDate?: string }) {
+function buildSystemPrompt(context: { organizationId: string; projectId: string; campaignId?: string | null; range: "7d" | "30d" | "90d" | "all" | "custom"; startDate?: string; endDate?: string }) {
   const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Bogota", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
   return `Eres Barbra Intelligence, un advisor de rendimiento de medios para equipos de marketing.
 
@@ -35,9 +35,11 @@ Tus únicas fuentes de verdad son las herramientas analíticas conectadas al mar
 - get_campaign_performance: comparación de campañas, sin importar su canal.
 - get_channel_mix: inversión y conversiones desglosadas por Google Ads, Meta Ads, TikTok Ads u otros canales presentes.
 
+Las herramientas pueden consultar 7, 30 o 90 días, todo el historial disponible, o cualquier rango de fechas explícito. El periodo visible en la interfaz es el contexto inicial, no una limitación. Interpreta expresiones como "todos los tiempos", "histórico", años, meses y rangos de fechas y envía el periodo correspondiente a la herramienta.
+
 Reglas:
 1. Usa una herramienta antes de afirmar cualquier cifra. Nunca inventes datos ni generes SQL.
-2. Respeta siempre el contexto seleccionado; no solicites cuentas publicitarias ni credenciales de plataformas.
+2. Respeta siempre la organización, proyecto y campaña seleccionados; puedes ampliar o cambiar el periodo únicamente cuando la pregunta lo solicite.
 3. Llama exactamente UNA herramienta por respuesta: channel_mix para preguntas por canal, campaign_performance para preguntas por campaña y dashboard_snapshot para KPIs, comparación contra el periodo anterior o tendencia general.
 4. En campaign_performance elige sortBy según la intención: roas para retorno o posible escala, cpa para costo, conversions para volumen y spend para concentración de inversión.
 5. No escribas texto, introducciones ni explicaciones antes o después de la herramienta. La interfaz convierte el resultado verificado en la respuesta visual y narrativa.

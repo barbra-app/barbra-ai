@@ -1,4 +1,4 @@
-export type DateRangePreset = "7d" | "30d" | "90d";
+export type DateRangePreset = "7d" | "30d" | "90d" | "all";
 export type DateRange = DateRangePreset | "custom";
 export type CampaignStatus = "active" | "paused" | "completed";
 export type MemberRole = "admin" | "user";

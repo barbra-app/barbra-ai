@@ -1,7 +1,13 @@
 import { tool } from "ai";
 import { z } from "zod";
 import { getAnalyticsRepository } from "@/lib/data/get-analytics-repository";
-import type { DashboardSnapshot, DateRange, DateRangePreset } from "@/lib/domain/analytics";
+import type { DashboardSnapshot, DateRange } from "@/lib/domain/analytics";
+
+type ToolPeriod = {
+  range?: DateRange;
+  startDate?: string;
+  endDate?: string;
+};
 
 function metricValue(snapshot: DashboardSnapshot, id: string) {
   return snapshot.metrics.find((metric) => metric.id === id);
@@ -36,21 +42,30 @@ export function getAnalyticsTools(context: {
   startDate?: string;
   endDate?: string;
 }, auth?: { firestoreToken?: string }) {
-  const rangeSchema = z.enum(["7d", "30d", "90d"]).optional();
+  const periodSchema = {
+    range: z.enum(["7d", "30d", "90d", "all", "custom"]).optional().describe("Period to query. Use all for all available history and custom with startDate/endDate for explicit dates."),
+    startDate: z.string().date().optional().describe("Inclusive YYYY-MM-DD start date; required when range is custom."),
+    endDate: z.string().date().optional().describe("Inclusive YYYY-MM-DD end date; required when range is custom."),
+  };
   const campaignSortSchema = z.enum(["spend", "conversions", "cpa", "roas"]);
   const cache = new Map<string, Promise<DashboardSnapshot>>();
-  const snapshot = (requestedRange?: DateRangePreset, campaignId?: string | null) => {
-    const range = context.range === "custom" ? "custom" : requestedRange ?? context.range;
+  const snapshot = (period: ToolPeriod = {}, campaignId?: string | null) => {
+    const range = period.range ?? context.range;
+    const startDate = range === "custom" ? period.startDate ?? context.startDate : undefined;
+    const endDate = range === "custom" ? period.endDate ?? context.endDate : undefined;
+    if (range === "custom" && (!startDate || !endDate || startDate > endDate)) {
+      throw new Error("ANALYTICS_DATE_RANGE_INVALID");
+    }
     const selectedCampaignId = campaignId === undefined ? context.campaignId : campaignId;
-    const key = `${range}:${context.startDate ?? ""}:${context.endDate ?? ""}:${selectedCampaignId ?? "all"}`;
+    const key = `${range}:${startDate ?? ""}:${endDate ?? ""}:${selectedCampaignId ?? "all"}`;
     const existing = cache.get(key);
     if (existing) return existing;
     const pending = getAnalyticsRepository().then((repository) => repository.getDashboard({
       ...context,
       campaignId: selectedCampaignId,
       range,
-      startDate: range === "custom" ? context.startDate : undefined,
-      endDate: range === "custom" ? context.endDate : undefined,
+      startDate,
+      endDate,
     }, auth));
     cache.set(key, pending);
     return pending;
@@ -58,22 +73,22 @@ export function getAnalyticsTools(context: {
 
   return {
     get_dashboard_snapshot: tool({
-      description: "Get verified KPI totals, trend data, channel mix and current insights for the selected organization, project and campaign.",
-      inputSchema: z.object({ range: rangeSchema }),
-      execute: async ({ range }) => {
-        const data = await snapshot(range);
+      description: "Get verified KPI totals, trend data, channel mix and current insights for the selected scope. Supports presets, all available history, or explicit custom dates.",
+      inputSchema: z.object(periodSchema),
+      execute: async (period) => {
+        const data = await snapshot(period);
         return { ...data, verifiedInsight: snapshotInsight(data) };
       },
     }),
     get_campaign_performance: tool({
-      description: "Compare verified campaigns in the selected project. Use sortBy=roas for return or scale questions, cpa for acquisition cost, conversions for volume, and spend for investment concentration.",
+      description: "Compare verified campaigns in the selected project for presets, all available history, or explicit custom dates. Use sortBy=roas for return or scale questions, cpa for acquisition cost, conversions for volume, and spend for investment concentration.",
       inputSchema: z.object({
-        range: rangeSchema,
+        ...periodSchema,
         limit: z.number().int().min(1).max(12).default(8),
         sortBy: campaignSortSchema.default("spend"),
       }),
-      execute: async ({ range, limit, sortBy }) => {
-        const data = await snapshot(range, null);
+      execute: async ({ range, startDate, endDate, limit, sortBy }) => {
+        const data = await snapshot({ range, startDate, endDate }, null);
         const eligible = data.campaigns.filter((row) => row.spend > 0);
         const sorted = [...eligible].sort((left, right) => {
           if (sortBy === "cpa") {
@@ -100,10 +115,10 @@ export function getAnalyticsTools(context: {
       },
     }),
     get_channel_mix: tool({
-      description: "Compare verified media channels by spend, conversions, CPA, spend share and conversion share. Use for channel allocation and efficiency questions.",
-      inputSchema: z.object({ range: rangeSchema }),
-      execute: async ({ range }) => {
-        const data = await snapshot(range);
+      description: "Compare verified media channels by spend, conversions, CPA, spend share and conversion share for presets, all available history, or explicit custom dates.",
+      inputSchema: z.object(periodSchema),
+      execute: async (period) => {
+        const data = await snapshot(period);
         const totalSpend = data.channelMix.reduce((sum, row) => sum + row.spend, 0);
         const totalConversions = data.channelMix.reduce((sum, row) => sum + row.conversions, 0);
         const rows = data.channelMix.map((row) => ({
