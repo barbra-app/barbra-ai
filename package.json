@@ -9,7 +9,8 @@
     "dev:next": "next dev --turbopack",
     "build:next": "next build",
     "lint": "next lint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "qa:ai": "node scripts/qa-ai.mjs"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.0",

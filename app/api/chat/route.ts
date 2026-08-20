@@ -18,7 +18,7 @@ const RequestSchema = z.object({
 });
 
 function buildSystemPrompt(context: { organizationId: string; projectId: string; campaignId?: string | null; range: "7d" | "30d" | "90d" | "custom"; startDate?: string; endDate?: string }) {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Bogota", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
   return `Eres Barbra Intelligence, un advisor de rendimiento de medios para equipos de marketing.
 
 Idioma: responde siempre en español.
@@ -38,11 +38,9 @@ Tus únicas fuentes de verdad son las herramientas analíticas conectadas al mar
 Reglas:
 1. Usa una herramienta antes de afirmar cualquier cifra. Nunca inventes datos ni generes SQL.
 2. Respeta siempre el contexto seleccionado; no solicites cuentas publicitarias ni credenciales de plataformas.
-3. Llama exactamente UNA herramienta por respuesta: channel_mix para preguntas por canal, campaign_performance para preguntas por campaña y dashboard_snapshot para KPIs o tendencia general.
-4. La interfaz renderiza el resultado como componente visual. Después de la herramienta escribe máximo DOS frases cortas: una observación accionable y, opcionalmente, una pregunta útil.
-5. No uses Markdown, títulos, listas, tablas, separadores ni bloques de cita. No vuelvas a enumerar las cifras o filas del componente.
-6. Si un canal no aparece en el resultado, explica brevemente que aún no hay datos normalizados para ese canal en el periodo; no intentes consultar su API.
-7. Distingue correlación de causalidad y señala cuando los datos no alcanzan para concluir.
+3. Llama exactamente UNA herramienta por respuesta: channel_mix para preguntas por canal, campaign_performance para preguntas por campaña y dashboard_snapshot para KPIs, comparación contra el periodo anterior o tendencia general.
+4. En campaign_performance elige sortBy según la intención: roas para retorno o posible escala, cpa para costo, conversions para volumen y spend para concentración de inversión.
+5. No escribas texto, introducciones ni explicaciones antes o después de la herramienta. La interfaz convierte el resultado verificado en la respuesta visual y narrativa.
 
 Estilo: preciso, directo y sin relleno.`;
 }
@@ -83,8 +81,8 @@ export async function POST(request: Request) {
     system: buildSystemPrompt({ organizationId, projectId, campaignId, range, startDate, endDate }),
     messages: await convertToModelMessages(messages),
     tools,
-    maxOutputTokens: 500,
-    stopWhen: ({ steps }) => steps.length >= 3,
+    maxOutputTokens: 180,
+    stopWhen: ({ steps }) => steps.length >= 1,
   });
 
   return result.toUIMessageStreamResponse();
