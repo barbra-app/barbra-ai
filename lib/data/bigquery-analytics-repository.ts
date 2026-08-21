@@ -27,7 +27,7 @@ interface CanonicalRow {
   source: string;
   account_id: string;
   campaign_id: string;
-  campaign_name: string;
+  campaign_name: string | null;
   campaign_status: string | null;
   currency_code: string | null;
   spend: unknown;
@@ -371,7 +371,7 @@ export class BigQueryAnalyticsRepository implements AnalyticsRepository {
       const campaignKey = `${row.source}:${row.account_id}:${row.campaign_id}`;
       const campaign = campaigns.get(campaignKey) ?? {
         id: campaignKey,
-        name: humanizeCampaignName(row.campaign_name),
+        name: humanizeCampaignName(row.campaign_name, row.campaign_id),
         channel: channelLabel(row.source),
         status: campaignStatus(row.campaign_status),
         spend: 0,

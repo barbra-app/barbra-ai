@@ -86,9 +86,9 @@ function humanizeSegment(segment: string) {
     .join(" ");
 }
 
-export function humanizeCampaignName(name: string) {
-  const segments = name
-    .trim()
+export function humanizeCampaignName(name: string | null | undefined, fallback = "Campaña") {
+  const normalizedName = name?.trim() || fallback.trim() || "Campaña";
+  const segments = normalizedName
     .split(/[_|]+/)
     .filter((segment) => {
       const normalized = segment.trim().toLocaleLowerCase("es-CO");
@@ -99,5 +99,5 @@ export function humanizeCampaignName(name: string) {
     .map(humanizeSegment)
     .filter(Boolean);
 
-  return segments.join(" · ") || name;
+  return segments.join(" · ") || normalizedName;
 }

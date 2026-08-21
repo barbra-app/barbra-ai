@@ -421,7 +421,7 @@ function ChannelMix({ snapshot }: { snapshot: DashboardSnapshot }) {
         </div>
         <div className="mix-list">
           {snapshot.channelMix.map((item, index) => (
-            <div key={item.channel}><i style={{ background: CHANNEL_COLORS[index % CHANNEL_COLORS.length] }} /><span>{item.channel}</span><strong>{formatPercent(item.spend / total, 0)}</strong></div>
+            <div key={item.channel}><i style={{ background: CHANNEL_COLORS[index % CHANNEL_COLORS.length] }} /><span>{item.channel}</span><strong>{formatPercent(total ? item.spend / total : 0, 0)}</strong></div>
           ))}
         </div>
       </div>
