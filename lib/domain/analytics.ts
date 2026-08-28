@@ -1,4 +1,5 @@
-export type DateRangePreset = "7d" | "30d" | "90d";
+export type DateRangePreset = "7d" | "30d" | "90d" | "all";
+export type DateRange = DateRangePreset | "custom";
 export type CampaignStatus = "active" | "paused" | "completed";
 export type MemberRole = "admin" | "user";
 
@@ -20,6 +21,7 @@ export interface Campaign {
   id: string;
   projectId: string;
   name: string;
+  sourceName?: string;
   channel: string;
   objective: string;
   status: CampaignStatus;
@@ -39,7 +41,9 @@ export interface AnalyticsQuery {
   organizationId: string;
   projectId: string;
   campaignId?: string | null;
-  range: DateRangePreset;
+  range: DateRange;
+  startDate?: string;
+  endDate?: string;
 }
 
 export interface MetricSummary {
@@ -96,32 +100,3 @@ export interface DashboardSnapshot {
   campaigns: CampaignPerformance[];
   insights: AdvisorInsight[];
 }
-
-export const DEMO_ORGANIZATIONS: Organization[] = [
-  { id: "org_barbra", name: "Barbra", slug: "barbra" },
-];
-
-export const DEMO_PROJECTS: Project[] = [
-  { id: "prj_ritvales", organizationId: "org_barbra", name: "Ritvales", clientName: "Ritvales", status: "active" },
-  { id: "prj_estereo", organizationId: "org_barbra", name: "Estéreo Live", clientName: "Estéreo Live", status: "active" },
-  { id: "prj_atelier", organizationId: "org_barbra", name: "Atelier Couture", clientName: "Atelier Couture", status: "active" },
-];
-
-export const DEMO_CAMPAIGNS: Campaign[] = [
-  { id: "cmp_awareness", projectId: "prj_ritvales", name: "Always-on Awareness", channel: "Meta", objective: "Awareness", status: "active" },
-  { id: "cmp_leads", projectId: "prj_ritvales", name: "Lead Generation · Q3", channel: "Google", objective: "Leads", status: "active" },
-  { id: "cmp_retarget", projectId: "prj_ritvales", name: "High Intent Retargeting", channel: "Meta", objective: "Conversions", status: "active" },
-  { id: "cmp_festival", projectId: "prj_estereo", name: "Festival Estéreo Picnic", channel: "Meta", objective: "Ticket sales", status: "active" },
-  { id: "cmp_search", projectId: "prj_estereo", name: "Concert Search", channel: "Google", objective: "Ticket sales", status: "active" },
-  { id: "cmp_capsule", projectId: "prj_atelier", name: "FW26 Capsule", channel: "Meta", objective: "Revenue", status: "active" },
-];
-
-export const DEMO_USER: AppUser = {
-  uid: "demo_steve",
-  name: "Steve Suárez",
-  email: "steve@barbra.com.co",
-  role: "admin",
-  organizationId: null,
-  organizationIds: ["org_barbra"],
-  projectIds: DEMO_PROJECTS.map((project) => project.id),
-};

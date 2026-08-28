@@ -28,15 +28,13 @@ import {
   YAxis,
 } from "recharts";
 import { AdvisorPanel } from "@/components/advisor/advisor-panel";
+import { DashboardSkeleton, IntelligenceDashboardSkeleton } from "@/components/dashboard/intelligence-dashboard-skeleton";
 import { UserProfileMenu } from "@/components/profile/user-profile-menu";
 import {
-  DEMO_CAMPAIGNS,
-  DEMO_ORGANIZATIONS,
-  DEMO_PROJECTS,
-  DEMO_USER,
   type AppUser,
   type Campaign,
   type DashboardSnapshot,
+  type DateRange,
   type DateRangePreset,
   type MetricSummary,
   type Organization,
@@ -63,26 +61,49 @@ const CHANNEL_COLORS = [
   "var(--color-chart-4)",
 ];
 
+type DashboardIssue = {
+  kind: "empty" | "error";
+  message: string;
+};
+
+function todayInBogota() {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Bogota",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+}
+
+function daysBefore(date: string, days: number) {
+  const value = new Date(`${date}T00:00:00.000Z`);
+  value.setUTCDate(value.getUTCDate() - days);
+  return value.toISOString().slice(0, 10);
+}
+
 export function IntelligenceDashboard() {
-  const [workspace, setWorkspace] = useState<{ user: AppUser; organizations: Organization[]; projects: Project[]; campaigns: Campaign[] }>({
-    user: DEMO_USER,
-    organizations: DEMO_ORGANIZATIONS,
-    projects: DEMO_PROJECTS,
-    campaigns: DEMO_CAMPAIGNS,
-  });
-  const [organizationId, setOrganizationId] = useState(DEMO_ORGANIZATIONS[0].id);
+  const [workspace, setWorkspace] = useState<{ user: AppUser; organizations: Organization[]; projects: Project[]; campaigns: Campaign[] } | null>(null);
+  const [workspaceReady, setWorkspaceReady] = useState(false);
+  const [workspaceError, setWorkspaceError] = useState<string | null>(null);
+  const [organizationId, setOrganizationId] = useState("");
   const availableProjects = useMemo(
-    () => workspace.projects.filter((project) => project.organizationId === organizationId),
-    [organizationId, workspace.projects],
+    () => workspace?.projects.filter((project) => project.organizationId === organizationId) ?? [],
+    [organizationId, workspace],
   );
-  const [projectId, setProjectId] = useState(availableProjects[0].id);
-  const availableCampaigns = useMemo(() => workspace.campaigns.filter((campaign) => campaign.projectId === projectId), [projectId, workspace.campaigns]);
+  const [projectId, setProjectId] = useState("");
+  const availableCampaigns = useMemo(() => workspace?.campaigns.filter((campaign) => campaign.projectId === projectId) ?? [], [projectId, workspace]);
   const [campaignId, setCampaignId] = useState<string>("all");
-  const [range, setRange] = useState<DateRangePreset>("30d");
+  const [range, setRange] = useState<DateRange>("30d");
+  const today = useMemo(todayInBogota, []);
+  const [calendarOpen, setCalendarOpen] = useState(false);
+  const [customStartDate, setCustomStartDate] = useState(() => daysBefore(todayInBogota(), 89));
+  const [customEndDate, setCustomEndDate] = useState(today);
+  const [draftStartDate, setDraftStartDate] = useState(customStartDate);
+  const [draftEndDate, setDraftEndDate] = useState(customEndDate);
   const [snapshot, setSnapshot] = useState<DashboardSnapshot | null>(null);
   const [advisorOpen, setAdvisorOpen] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [issue, setIssue] = useState<DashboardIssue | null>(null);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -97,11 +118,24 @@ export function IntelligenceDashboard() {
         return response.json();
       })
       .then(({ data }) => {
+        const nextOrganizationId = data.organizations[0]?.id ?? "";
+        const nextProjectId = data.projects.find(
+          (project: Project) => project.organizationId === nextOrganizationId,
+        )?.id ?? "";
         setWorkspace(data);
-        setOrganizationId(data.organizations[0]?.id ?? "");
+        setOrganizationId(nextOrganizationId);
+        setProjectId(nextProjectId);
+        setCampaignId("all");
+        setWorkspaceError(null);
+        setIssue(null);
+        setWorkspaceReady(true);
       })
       .catch((reason) => {
-        if (reason?.name !== "AbortError") setError(reason instanceof Error ? reason.message : String(reason));
+        if (reason?.name !== "AbortError") {
+          setWorkspaceError(reason instanceof Error ? reason.message : String(reason));
+          setWorkspaceReady(true);
+          setLoading(false);
+        }
       });
     return () => controller.abort();
   }, []);
@@ -113,12 +147,16 @@ export function IntelligenceDashboard() {
   useEffect(() => setCampaignId("all"), [projectId]);
 
   useEffect(() => {
-    if (!organizationId || !projectId) return;
+    if (!workspaceReady || !organizationId || !projectId) return;
     const controller = new AbortController();
     const params = new URLSearchParams({ organizationId, projectId, range });
     if (campaignId !== "all") params.set("campaignId", campaignId);
+    if (range === "custom") {
+      params.set("startDate", customStartDate);
+      params.set("endDate", customEndDate);
+    }
     setLoading(true);
-    setError(null);
+    setIssue(null);
     getFirebaseIdToken()
       .then((token) => fetch(`/api/dashboard?${params}`, {
         cache: "no-store",
@@ -126,20 +164,46 @@ export function IntelligenceDashboard() {
         headers: token ? { Authorization: `Bearer ${token}` } : undefined,
       }))
       .then(async (response) => {
-        if (!response.ok) throw new Error((await response.json()).error ?? "No fue posible cargar el dashboard");
-        return response.json();
+        const payload = await response.json();
+        if (!response.ok) {
+          if (payload.code === "ANALYTICS_NO_DATA") {
+            setSnapshot(null);
+            setAdvisorOpen(false);
+            setIssue({ kind: "empty", message: payload.error });
+            return null;
+          }
+          throw new Error(payload.error ?? "No fue posible cargar el dashboard");
+        }
+        return payload;
       })
-      .then((payload) => setSnapshot(payload.data))
+      .then((payload) => {
+        if (payload) setSnapshot(payload.data);
+      })
       .catch((reason) => {
-        if (reason?.name !== "AbortError") setError(reason instanceof Error ? reason.message : String(reason));
+        if (reason?.name !== "AbortError") {
+          setSnapshot(null);
+          setAdvisorOpen(false);
+          setIssue({ kind: "error", message: reason instanceof Error ? reason.message : String(reason) });
+        }
       })
       .finally(() => setLoading(false));
     return () => controller.abort();
-  }, [organizationId, projectId, campaignId, range]);
+  }, [workspaceReady, organizationId, projectId, campaignId, range, customStartDate, customEndDate]);
+
+  function applyCustomRange() {
+    if (!draftStartDate || !draftEndDate || draftStartDate > draftEndDate) return;
+    setCustomStartDate(draftStartDate);
+    setCustomEndDate(draftEndDate);
+    setRange("custom");
+    setCalendarOpen(false);
+  }
 
   const project = availableProjects.find((item) => item.id === projectId);
   const campaign = availableCampaigns.find((item) => item.id === campaignId);
-  const organization = workspace.organizations.find((item) => item.id === organizationId);
+  const organization = workspace?.organizations.find((item) => item.id === organizationId);
+
+  if (!workspaceReady) return <IntelligenceDashboardSkeleton />;
+  if (!workspace) return <WorkspaceLoadError message={workspaceError ?? "No fue posible cargar tus accesos"} />;
 
   return (
     <div className={cn("intelligence-shell", advisorOpen && "advisor-is-open")}>
@@ -186,11 +250,34 @@ export function IntelligenceDashboard() {
           <LabeledSelect label="Proyecto" value={projectId} onChange={setProjectId} options={availableProjects.map((item) => ({ value: item.id, label: item.name }))} />
           <LabeledSelect label="Campaña" value={campaignId} onChange={setCampaignId} options={[{ value: "all", label: "Todas las campañas" }, ...availableCampaigns.map((item) => ({ value: item.id, label: item.name }))]} />
         </div>
-        <div className="range-control" aria-label="Rango de fechas">
-          {(["7d", "30d", "90d"] as DateRangePreset[]).map((item) => (
-            <button key={item} className={range === item ? "active" : ""} onClick={() => setRange(item)}>{item.replace("d", " días")}</button>
-          ))}
-          <button className="calendar-button" aria-label="Elegir fechas"><CalendarDays className="size-4" /></button>
+        <div className="range-picker">
+          <div className="range-control" aria-label="Rango de fechas">
+            {(["7d", "30d", "90d"] as DateRangePreset[]).map((item) => (
+              <button key={item} className={range === item ? "active" : ""} onClick={() => { setRange(item); setCalendarOpen(false); }}>{item.replace("d", " días")}</button>
+            ))}
+            <button
+              className={cn("calendar-button", range === "custom" && "active")}
+              aria-label="Elegir fechas"
+              aria-expanded={calendarOpen}
+              onClick={() => setCalendarOpen((open) => !open)}
+            >
+              <CalendarDays className="size-4" />
+            </button>
+          </div>
+          {calendarOpen && (
+            <div className="date-range-popover" role="dialog" aria-label="Elegir rango de fechas">
+              <div className="date-range-heading"><strong>Rango personalizado</strong><span>Consulta el histórico disponible</span></div>
+              <div className="date-range-fields">
+                <label><span>Desde</span><input type="date" value={draftStartDate} max={draftEndDate || today} onInput={(event) => setDraftStartDate(event.currentTarget.value)} /></label>
+                <label><span>Hasta</span><input type="date" value={draftEndDate} min={draftStartDate} max={today} onInput={(event) => setDraftEndDate(event.currentTarget.value)} /></label>
+              </div>
+              {draftStartDate > draftEndDate && <p className="date-range-error">La fecha inicial debe ser anterior a la final.</p>}
+              <div className="date-range-actions">
+                <button onClick={() => setCalendarOpen(false)}>Cancelar</button>
+                <button className="primary" disabled={!draftStartDate || !draftEndDate || draftStartDate > draftEndDate} onClick={applyCustomRange}>Aplicar</button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -199,15 +286,33 @@ export function IntelligenceDashboard() {
           <section className="dashboard-hero">
             <div>
               <h1>{campaign ? campaign.name : project?.name}</h1>
-              <p>{snapshot?.periodLabel ?? "Consultando periodo"}</p>
+              <p>
+                {snapshot?.periodLabel
+                  ?? (issue?.kind === "empty"
+                    ? range === "custom" ? `${customStartDate} – ${customEndDate}` : `Últimos ${range.replace("d", "")} días`
+                    : "Consultando periodo")}
+              </p>
             </div>
-            <div className="data-status" aria-live="polite">
+            <div className={cn("data-status", issue && "is-neutral")} aria-live="polite">
               <span />
-              {snapshot ? `Actualizado ${new Date(snapshot.updatedAt).toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" })}` : "Actualizando"}
+              {issue?.kind === "empty"
+                ? "Sin actividad reciente"
+                : issue?.kind === "error"
+                  ? "No disponible"
+                  : snapshot
+                    ? `Actualizado ${new Date(snapshot.updatedAt).toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" })}`
+                    : "Actualizando"}
             </div>
           </section>
 
-          {error ? <DashboardError message={error} /> : !snapshot ? <DashboardSkeleton /> : (
+          {issue?.kind === "empty" ? (
+            <DashboardEmptyState
+              campaignSelected={Boolean(campaign)}
+              range={range}
+              onShowAllCampaigns={() => setCampaignId("all")}
+              onTryNinetyDays={() => setRange("90d")}
+            />
+          ) : issue?.kind === "error" ? <DashboardError message={issue.message} /> : !snapshot ? <DashboardSkeleton /> : (
             <div className={loading ? "is-refreshing" : undefined}>
               <section className="kpi-grid" aria-label="Métricas críticas">
                 {snapshot.metrics.filter((metric) => CRITICAL_METRICS.has(metric.id)).map((metric) => (
@@ -276,7 +381,7 @@ function PerformanceChart({ snapshot }: { snapshot: DashboardSnapshot }) {
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart data={snapshot.trend} margin={{ top: 20, right: 4, left: 0, bottom: 0 }}>
             <defs>
-              <linearGradient id="spendGradient" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="var(--color-accent)" stopOpacity={0.16} /><stop offset="100%" stopColor="var(--color-accent)" stopOpacity={0} /></linearGradient>
+              <linearGradient id="spendGradient" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="var(--color-chart-1)" stopOpacity={0.18} /><stop offset="100%" stopColor="var(--color-chart-1)" stopOpacity={0} /></linearGradient>
               <linearGradient id="revenueGradient" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="var(--color-signal)" stopOpacity={0.16} /><stop offset="100%" stopColor="var(--color-signal)" stopOpacity={0} /></linearGradient>
             </defs>
             <CartesianGrid stroke="var(--color-rule)" vertical={false} />
@@ -284,7 +389,7 @@ function PerformanceChart({ snapshot }: { snapshot: DashboardSnapshot }) {
             <YAxis tick={{ fontSize: 11, fill: "var(--color-muted)" }} axisLine={false} tickLine={false} tickFormatter={(value) => `${Math.round(Number(value) / 1000000)}M`} width={38} />
             <Tooltip content={<PerformanceTooltip currency={snapshot.currency} />} />
             <Area type="monotone" dataKey="revenue" stroke="var(--color-signal-strong)" strokeWidth={2} fill="url(#revenueGradient)" />
-            <Area type="monotone" dataKey="spend" stroke="var(--color-accent)" strokeWidth={2} fill="url(#spendGradient)" />
+            <Area type="monotone" dataKey="spend" stroke="var(--color-chart-1)" strokeWidth={2} fill="url(#spendGradient)" />
           </AreaChart>
         </ResponsiveContainer>
       </div>
@@ -316,7 +421,7 @@ function ChannelMix({ snapshot }: { snapshot: DashboardSnapshot }) {
         </div>
         <div className="mix-list">
           {snapshot.channelMix.map((item, index) => (
-            <div key={item.channel}><i style={{ background: CHANNEL_COLORS[index % CHANNEL_COLORS.length] }} /><span>{item.channel}</span><strong>{formatPercent(item.spend / total, 0)}</strong></div>
+            <div key={item.channel}><i style={{ background: CHANNEL_COLORS[index % CHANNEL_COLORS.length] }} /><span>{item.channel}</span><strong>{formatPercent(total ? item.spend / total : 0, 0)}</strong></div>
           ))}
         </div>
       </div>
@@ -324,10 +429,49 @@ function ChannelMix({ snapshot }: { snapshot: DashboardSnapshot }) {
   );
 }
 
-function DashboardSkeleton() {
-  return <div className="dashboard-skeleton"><div className="skeleton-kpis">{Array.from({ length: 4 }, (_, index) => <span key={index} />)}</div><div className="skeleton-chart" /></div>;
+function DashboardEmptyState({
+  campaignSelected,
+  range,
+  onShowAllCampaigns,
+  onTryNinetyDays,
+}: {
+  campaignSelected: boolean;
+  range: DateRange;
+  onShowAllCampaigns: () => void;
+  onTryNinetyDays: () => void;
+}) {
+  const period = range === "custom" ? "en el rango seleccionado" : `en los últimos ${range.replace("d", "")} días`;
+
+  return (
+    <section className="dashboard-empty" aria-live="polite">
+      <Activity className="dashboard-empty-icon" aria-hidden="true" />
+      <div className="dashboard-empty-copy">
+        <strong>Sin actividad en este periodo</strong>
+        <p>
+          {campaignSelected ? "Esta campaña" : "Esta selección"} no registró métricas {period}.
+        </p>
+      </div>
+      <div className="dashboard-empty-actions">
+        {campaignSelected && <button className="primary" onClick={onShowAllCampaigns}>Ver todas las campañas</button>}
+        {range !== "90d" && <button onClick={onTryNinetyDays}>Probar 90 días</button>}
+      </div>
+    </section>
+  );
 }
 
 function DashboardError({ message }: { message: string }) {
   return <div className="dashboard-error"><div><strong>No pudimos cargar los datos</strong><p>{message}</p></div><button onClick={() => location.reload()}><RefreshCw className="size-4" />Reintentar</button></div>;
+}
+
+function WorkspaceLoadError({ message }: { message: string }) {
+  return (
+    <div className="intelligence-shell">
+      <header className="intelligence-topbar">
+        <div className="brand-lockup"><img src="/barbra-logo.png" width="126" height="20" alt="Barbra" /></div>
+      </header>
+      <main className="dashboard-main workspace-load-error">
+        <DashboardError message={message} />
+      </main>
+    </div>
+  );
 }
