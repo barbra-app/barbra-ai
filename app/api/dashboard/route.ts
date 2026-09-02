@@ -9,7 +9,16 @@ const QuerySchema = z.object({
   organizationId: z.string().min(1).max(120),
   projectId: z.string().min(1).max(120),
   campaignId: z.string().min(1).max(120).nullable().optional(),
-  range: z.enum(["7d", "30d", "90d"]).default("30d"),
+  range: z.enum(["7d", "30d", "90d", "custom"]).default("30d"),
+  startDate: z.string().date().optional(),
+  endDate: z.string().date().optional(),
+}).superRefine((value, context) => {
+  if (value.range !== "custom") return;
+  if (!value.startDate || !value.endDate) {
+    context.addIssue({ code: "custom", message: "Custom ranges require startDate and endDate" });
+  } else if (value.startDate > value.endDate) {
+    context.addIssue({ code: "custom", message: "startDate must be before or equal to endDate" });
+  }
 });
 
 export async function GET(request: Request) {
@@ -19,6 +28,8 @@ export async function GET(request: Request) {
     projectId: url.searchParams.get("projectId"),
     campaignId: url.searchParams.get("campaignId") || null,
     range: url.searchParams.get("range") || "30d",
+    startDate: url.searchParams.get("startDate") || undefined,
+    endDate: url.searchParams.get("endDate") || undefined,
   });
 
   if (!parsed.success) {
@@ -42,6 +53,7 @@ export async function GET(request: Request) {
         ANALYTICS_CLIENT_NOT_CONFIGURED: "La organización aún no tiene un client_id analítico configurado",
         ANALYTICS_PROJECT_NOT_CONFIGURED: "El proyecto aún no tiene campañas conectadas al modelo analítico",
         ANALYTICS_CAMPAIGN_NOT_CONFIGURED: "La campaña aún no tiene sus identificadores de canal configurados",
+        ANALYTICS_DATE_RANGE_INVALID: "Selecciona un rango de fechas válido",
         ANALYTICS_NO_DATA: "No hay datos normalizados para esta selección y periodo",
         ANALYTICS_MIXED_CURRENCIES: "La selección contiene monedas distintas que todavía no han sido convertidas",
       };

@@ -1,7 +1,8 @@
-import type { AnalyticsQuery, DashboardSnapshot } from "@/lib/domain/analytics";
+import type { AnalyticsQuery, ConcertQuery, ConcertSummary, DashboardSnapshot } from "@/lib/domain/analytics";
 
 export interface AnalyticsRepository {
   getDashboard(query: AnalyticsQuery): Promise<DashboardSnapshot>;
+  getConcertSummary(query: ConcertQuery): Promise<ConcertSummary>;
 }
 
 export function calculateDelta(current: number, previous: number): number {

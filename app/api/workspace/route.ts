@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getRequestUser } from "@/lib/auth/server-session";
-import { DEMO_CAMPAIGNS, DEMO_ORGANIZATIONS, DEMO_PROJECTS, DEMO_USER } from "@/lib/domain/analytics";
+import { DEMO_ARTISTS, DEMO_CAMPAIGNS, DEMO_CONCERTS, DEMO_ORGANIZATIONS, DEMO_PROJECTS, DEMO_USER } from "@/lib/domain/analytics";
 
 export const dynamic = "force-dynamic";
 
@@ -12,7 +12,9 @@ function demoWorkspace(user = DEMO_USER) {
   const projects = DEMO_PROJECTS.filter((project) => organizationIds.has(project.organizationId) && (user.role === "admin" || user.projectIds.length === 0 || user.projectIds.includes(project.id)));
   const projectIds = new Set(projects.map((project) => project.id));
   const campaigns = DEMO_CAMPAIGNS.filter((campaign) => projectIds.has(campaign.projectId));
-  return { user, organizations, projects, campaigns };
+  const artists = DEMO_ARTISTS.filter((artist) => projectIds.has(artist.projectId));
+  const concerts = DEMO_CONCERTS.filter((concert) => projectIds.has(concert.projectId));
+  return { user, organizations, projects, campaigns, artists, concerts };
 }
 
 export async function GET(request: Request) {
@@ -50,9 +52,11 @@ export async function GET(request: Request) {
       clientName: String(doc.data()?.clientName ?? doc.data()?.name ?? doc.id),
       status: doc.data()?.status === "archived" ? "archived" as const : "active" as const,
     }));
-    const campaignSnapshots = await Promise.all(
-      projects.map((project) => db.collection("campaigns").where("projectId", "==", project.id).get()),
-    );
+    const [campaignSnapshots, artistSnapshots, concertSnapshots] = await Promise.all([
+      Promise.all(projects.map((project) => db.collection("campaigns").where("projectId", "==", project.id).get())),
+      Promise.all(projects.map((project) => db.collection("artists").where("projectId", "==", project.id).get())),
+      Promise.all(projects.map((project) => db.collection("concerts").where("projectId", "==", project.id).get())),
+    ]);
     const campaigns = campaignSnapshots.flatMap((snapshot) => snapshot.docs.flatMap((doc) => {
       const data = doc.data();
       // Only expose campaigns that have a complete mapping to the canonical
@@ -67,8 +71,30 @@ export async function GET(request: Request) {
         status: (["active", "paused", "completed"].includes(data.status) ? data.status : "active") as "active" | "paused" | "completed",
       }];
     }));
+    const artists = artistSnapshots
+      .flatMap((snapshot) => snapshot.docs.map((doc) => ({
+        id: doc.id,
+        projectId: String(doc.data()?.projectId ?? ""),
+        displayName: String(doc.data()?.displayName ?? doc.id),
+      })))
+      .sort((a, b) => a.displayName.localeCompare(b.displayName, "es"));
+    const concerts = concertSnapshots
+      .flatMap((snapshot) => snapshot.docs.flatMap((doc) => {
+        const data = doc.data();
+        // Only expose concerts with a usable pattern — an incomplete doc
+        // would otherwise resolve to zero campaigns silently.
+        if (!data.artistId || !data.namePattern) return [];
+        return [{
+          id: doc.id,
+          projectId: String(data.projectId),
+          artistId: String(data.artistId),
+          displayName: String(data.displayName ?? doc.id),
+          namePattern: String(data.namePattern),
+        }];
+      }))
+      .sort((a, b) => a.displayName.localeCompare(b.displayName, "es"));
 
-    return NextResponse.json({ data: { user, organizations, projects, campaigns }, mode: "firebase" });
+    return NextResponse.json({ data: { user, organizations, projects, campaigns, artists, concerts }, mode: "firebase" });
   } catch (error) {
     const message = error instanceof Error ? error.message : "UNAUTHENTICATED";
     return NextResponse.json(

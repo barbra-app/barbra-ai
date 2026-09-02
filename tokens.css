@@ -58,4 +58,5 @@
   --z-topbar: 20;
   --z-profile: 30;
   --z-advisor: 40;
+  --shadow-float: 0 1rem 2.5rem oklch(20% 0.012 80 / 0.12);
 }
