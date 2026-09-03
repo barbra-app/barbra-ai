@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getAnalyticsRepository } from "@/lib/data/get-analytics-repository";
-import { assertAdmin, assertProjectAccess, getRequestUser } from "@/lib/auth/server-session";
+import { assertAdmin, assertProjectAccess, getRequestUser, requestBearerToken } from "@/lib/auth/server-session";
+import { runtimeEnv } from "@/lib/runtime-env";
 
 export const dynamic = "force-dynamic";
 
@@ -41,8 +42,11 @@ export async function GET(request: Request) {
   try {
     const user = await getRequestUser(request);
     assertProjectAccess(user, parsed.data.organizationId, parsed.data.projectId);
-    const data = await (await getAnalyticsRepository()).getConcertSummary(parsed.data);
-    return NextResponse.json({ data, provider: process.env.ANALYTICS_PROVIDER ?? "mock" });
+    const useServiceAccount = await runtimeEnv("FIRESTORE_USE_SERVICE_ACCOUNT") === "true";
+    const data = await (await getAnalyticsRepository()).getConcertSummary(parsed.data, {
+      firestoreToken: useServiceAccount ? undefined : requestBearerToken(request) ?? undefined,
+    });
+    return NextResponse.json({ data, provider: "bigquery" });
   } catch (error) {
     if (error instanceof Error && error.message === "UNAUTHENTICATED") {
       return NextResponse.json({ error: "Authentication required" }, { status: 401 });
@@ -87,19 +91,20 @@ export async function POST(request: Request) {
     assertProjectAccess(user, parsed.data.organizationId, parsed.data.projectId);
     assertAdmin(user);
 
-    const { getFirebaseAdminFirestore } = await import("@/lib/firebase/admin");
-    const db = getFirebaseAdminFirestore();
-    const artist = await db.collection("artists").doc(parsed.data.artistId).get();
-    if (!artist.exists || artist.data()?.projectId !== parsed.data.projectId) {
+    const { createFirestoreDocument, getFirestoreDocument } = await import("@/lib/firebase/firestore-rest");
+    const useServiceAccount = await runtimeEnv("FIRESTORE_USE_SERVICE_ACCOUNT") === "true";
+    const firebaseIdToken = useServiceAccount ? undefined : requestBearerToken(request) ?? undefined;
+    const artist = await getFirestoreDocument("artists", parsed.data.artistId, firebaseIdToken);
+    if (!artist.exists || artist.data.projectId !== parsed.data.projectId) {
       return NextResponse.json({ error: "El artista no existe en este proyecto" }, { status: 404 });
     }
 
-    const doc = await db.collection("concerts").add({
+    const doc = await createFirestoreDocument("concerts", {
       projectId: parsed.data.projectId,
       artistId: parsed.data.artistId,
       displayName: parsed.data.displayName,
       namePattern: parsed.data.namePattern,
-    });
+    }, firebaseIdToken);
 
     return NextResponse.json(
       {

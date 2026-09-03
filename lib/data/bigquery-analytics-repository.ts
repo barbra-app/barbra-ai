@@ -1,6 +1,7 @@
-import { BigQuery, type Query } from "@google-cloud/bigquery";
 import type { AnalyticsRepository } from "@/lib/data/analytics-repository";
-import { resolveAnalyticsScope, resolveConcertScope } from "@/lib/data/analytics-scope";
+import { humanizeCampaignName } from "@/lib/campaign-name";
+import { resolveAnalyticsScope, resolveConcertScope, type CampaignAnalyticsScope } from "@/lib/data/analytics-scope";
+import { googleAccessToken } from "@/lib/google/access-token";
 import type {
   AdvisorInsight,
   AnalyticsQuery,
@@ -18,14 +19,20 @@ import type {
 } from "@/lib/domain/analytics";
 
 const RANGE_DAYS = { "7d": 7, "30d": 30, "90d": 90 } as const;
-const CHANNEL_COLORS = ["#2142ff", "#f5c842", "#00989b", "#b45eb3", "#f97316"];
+const CHANNEL_COLORS = [
+  "var(--color-chart-1)",
+  "var(--color-chart-2)",
+  "var(--color-chart-3)",
+  "var(--color-chart-4)",
+  "var(--color-chart-5)",
+];
 
 interface CanonicalRow {
   date: unknown;
   source: string;
   account_id: string;
   campaign_id: string;
-  campaign_name: string;
+  campaign_name: string | null;
   campaign_status: string | null;
   currency_code: string | null;
   spend: unknown;
@@ -44,37 +51,125 @@ interface Totals {
   revenue: number;
 }
 
+interface BigQueryField {
+  name: string;
+  type: string;
+  mode?: string;
+  fields?: BigQueryField[];
+}
+
+interface BigQueryResponse {
+  jobComplete?: boolean;
+  jobReference?: { jobId?: string; location?: string };
+  schema?: { fields?: BigQueryField[] };
+  rows?: { f?: { v: unknown }[] }[];
+  pageToken?: string;
+}
+
+function bigQueryParameters(params: { clientId: string; startDate: string; endDate: string; previousStartDate: string; campaigns: CampaignAnalyticsScope[] }) {
+  const stringParameter = (name: string, value: string) => ({
+    name,
+    parameterType: { type: "STRING" },
+    parameterValue: { value },
+  });
+  return [
+    stringParameter("clientId", params.clientId),
+    stringParameter("startDate", params.startDate),
+    stringParameter("endDate", params.endDate),
+    stringParameter("previousStartDate", params.previousStartDate),
+    {
+      name: "campaigns",
+      parameterType: {
+        type: "ARRAY",
+        arrayType: {
+          type: "STRUCT",
+          structTypes: ["source", "accountId", "campaignId"].map((name) => ({ name, type: { type: "STRING" } })),
+        },
+      },
+      parameterValue: {
+        arrayValues: params.campaigns.map((campaign) => ({
+          structValues: {
+            source: { value: campaign.source },
+            accountId: { value: campaign.accountId },
+            campaignId: { value: campaign.campaignId },
+          },
+        })),
+      },
+    },
+  ];
+}
+
+function concertQueryParameters(params: { clientId: string; startDate: string; endDate: string; patterns: string[] }) {
+  const stringParameter = (name: string, value: string) => ({
+    name,
+    parameterType: { type: "STRING" },
+    parameterValue: { value },
+  });
+  return [
+    stringParameter("clientId", params.clientId),
+    stringParameter("startDate", params.startDate),
+    stringParameter("endDate", params.endDate),
+    {
+      name: "patterns",
+      parameterType: { type: "ARRAY", arrayType: { type: "STRING" } },
+      parameterValue: { arrayValues: params.patterns.map((value) => ({ value })) },
+    },
+  ];
+}
+
+function decodeBigQueryRows<T>(payload: BigQueryResponse): T[] {
+  const fields = payload.schema?.fields ?? [];
+  return (payload.rows ?? []).map((row) => Object.fromEntries(
+    fields.map((field, index) => {
+      const raw = row.f?.[index]?.v ?? null;
+      if (raw !== null && field.type === "TIMESTAMP") {
+        return [field.name, new Date(Number(raw) * 1000).toISOString()];
+      }
+      return [field.name, raw];
+    }),
+  ) as T);
+}
+
 function isoDate(date: Date) {
   return date.toISOString().slice(0, 10);
 }
 
-// Resolves the requested range into a concrete [start, end] window. Presets
-// (7d/30d/90d) are relative to "today" in the reporting timezone; "custom"
-// uses the caller's explicit dates, already validated at the API route.
-function resolveDateWindow(query: { range: DateRange; startDate?: string; endDate?: string }) {
-  if (query.range === "custom") {
-    if (!query.startDate || !query.endDate || query.startDate > query.endDate) {
-      throw new Error("ANALYTICS_DATE_RANGE_INVALID");
-    }
-    return {
-      end: new Date(`${query.endDate}T00:00:00.000Z`),
-      start: new Date(`${query.startDate}T00:00:00.000Z`),
-    };
-  }
-  const days = RANGE_DAYS[query.range];
-  const end = new Date(`${reportingDate()}T00:00:00.000Z`);
-  const start = new Date(end);
-  start.setUTCDate(end.getUTCDate() - days + 1);
-  return { end, start };
-}
-
-function reportingDate() {
+function reportingDate(timeZone: string) {
   return new Intl.DateTimeFormat("en-CA", {
-    timeZone: process.env.BIGQUERY_REPORTING_TIMEZONE ?? "America/Bogota",
+    timeZone,
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
   }).format(new Date());
+}
+
+function queryWindow(query: { range: DateRange; startDate?: string; endDate?: string }, timeZone: string) {
+  if (query.range === "custom") {
+    if (!query.startDate || !query.endDate) throw new Error("ANALYTICS_DATE_RANGE_INVALID");
+    const start = new Date(`${query.startDate}T00:00:00.000Z`);
+    const end = new Date(`${query.endDate}T00:00:00.000Z`);
+    const days = Math.floor((end.getTime() - start.getTime()) / 86_400_000) + 1;
+    if (!Number.isFinite(days) || days < 1) throw new Error("ANALYTICS_DATE_RANGE_INVALID");
+    return { start, end, days };
+  }
+  if (query.range === "all") {
+    const start = new Date("2000-01-01T00:00:00.000Z");
+    const end = new Date(`${reportingDate(timeZone)}T00:00:00.000Z`);
+    const days = Math.floor((end.getTime() - start.getTime()) / 86_400_000) + 1;
+    return { start, end, days };
+  }
+  const days = RANGE_DAYS[query.range as keyof typeof RANGE_DAYS];
+  const end = new Date(`${reportingDate(timeZone)}T00:00:00.000Z`);
+  const start = new Date(end);
+  start.setUTCDate(end.getUTCDate() - days + 1);
+  return { start, end, days };
+}
+
+function periodLabel(query: AnalyticsQuery, start: Date, end: Date, days: number) {
+  if (query.range === "all") return "Todo el historial disponible";
+  if (query.range !== "custom") return `Últimos ${days} días`;
+  const formatter = new Intl.DateTimeFormat("es-CO", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
+  return `${formatter.format(start)} – ${formatter.format(end)}`;
 }
 
 function value(value: unknown): unknown {
@@ -214,52 +309,80 @@ function campaignWithRatios(totals: ConcertTotals, campaignId: string, campaignN
   return { campaignId, campaignName, ...totals, ...ratiosOf(totals) };
 }
 
-function bigQueryCredentials() {
-  const raw = process.env.BIGQUERY_SERVICE_ACCOUNT_JSON;
-  if (!raw) return undefined;
-  const parsed = JSON.parse(raw) as { client_email?: string; private_key?: string };
-  if (!parsed.client_email || !parsed.private_key) throw new Error("BIGQUERY_SERVICE_ACCOUNT_JSON is invalid");
-  return { client_email: parsed.client_email, private_key: parsed.private_key };
-}
-
 export class BigQueryAnalyticsRepository implements AnalyticsRepository {
-  private client: BigQuery;
+  private projectId: string;
   private view: string;
+  private credentialsJson?: string;
+  private maximumBytesBilled: string;
+  private timeZone: string;
+  private defaultCurrency: string;
 
-  constructor() {
-    const projectId = process.env.GCP_PROJECT_ID;
-    const view = process.env.BIGQUERY_ANALYTICS_VIEW;
+  constructor(config: { projectId?: string; view?: string; credentialsJson?: string; maximumBytesBilled?: string; timeZone?: string; defaultCurrency?: string }) {
+    const { projectId, view } = config;
     if (!projectId || !view) {
       throw new Error("GCP_PROJECT_ID and BIGQUERY_ANALYTICS_VIEW are required for BigQuery analytics");
     }
     if (!/^[A-Za-z0-9_.-]+$/.test(view)) throw new Error("BIGQUERY_ANALYTICS_VIEW contains invalid characters");
-    this.client = new BigQuery({ projectId, credentials: bigQueryCredentials() });
+    this.projectId = projectId;
+    this.credentialsJson = config.credentialsJson;
     this.view = view;
+    this.maximumBytesBilled = config.maximumBytesBilled ?? "250000000";
+    this.timeZone = config.timeZone ?? "America/Bogota";
+    this.defaultCurrency = config.defaultCurrency ?? "COP";
   }
 
-  private async rows<T>(query: string, params: Query["params"]): Promise<T[]> {
-    const maximumBytesBilled = process.env.BIGQUERY_MAX_BYTES_BILLED ?? "250000000";
-    const [job] = await this.client.createQueryJob({
-      query,
-      params,
-      useLegacySql: false,
-      maximumBytesBilled,
-      jobTimeoutMs: 20_000,
+  private async rows<T>(query: string, queryParameters: Array<{ name: string; parameterType: Record<string, unknown>; parameterValue: Record<string, unknown> }>): Promise<T[]> {
+    const token = await googleAccessToken("https://www.googleapis.com/auth/bigquery", this.credentialsJson);
+    const response = await fetch(`https://bigquery.googleapis.com/bigquery/v2/projects/${encodeURIComponent(this.projectId)}/queries`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+      body: JSON.stringify({
+        query,
+        useLegacySql: false,
+        timeoutMs: 20_000,
+        maxResults: 10_000,
+        maximumBytesBilled: this.maximumBytesBilled,
+        parameterMode: "NAMED",
+        queryParameters,
+      }),
     });
-    const [rows] = await job.getQueryResults();
-    return rows as T[];
+    if (!response.ok) throw new Error(`BIGQUERY_QUERY_FAILED_${response.status}: ${await response.text()}`);
+    let payload = await response.json() as BigQueryResponse;
+    if (!payload.jobComplete && payload.jobReference?.jobId) {
+      const jobId = payload.jobReference.jobId;
+      const location = payload.jobReference.location ? `&location=${encodeURIComponent(payload.jobReference.location)}` : "";
+      for (let attempt = 0; attempt < 10 && !payload.jobComplete; attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 250));
+        const poll = await fetch(`https://bigquery.googleapis.com/bigquery/v2/projects/${encodeURIComponent(this.projectId)}/queries/${encodeURIComponent(jobId)}?timeoutMs=20000&maxResults=10000${location}`, { headers: { authorization: `Bearer ${token}` } });
+        if (!poll.ok) throw new Error(`BIGQUERY_RESULTS_FAILED_${poll.status}`);
+        payload = await poll.json() as BigQueryResponse;
+      }
+    }
+    if (!payload.jobComplete) throw new Error("BIGQUERY_QUERY_TIMEOUT");
+    const rows = decodeBigQueryRows<T>(payload);
+    let pageToken = payload.pageToken;
+    const jobId = payload.jobReference?.jobId;
+    const location = payload.jobReference?.location ? `&location=${encodeURIComponent(payload.jobReference.location)}` : "";
+    while (pageToken && jobId) {
+      const page = await fetch(`https://bigquery.googleapis.com/bigquery/v2/projects/${encodeURIComponent(this.projectId)}/queries/${encodeURIComponent(jobId)}?maxResults=10000&pageToken=${encodeURIComponent(pageToken)}${location}`, { headers: { authorization: `Bearer ${token}` } });
+      if (!page.ok) throw new Error(`BIGQUERY_RESULTS_FAILED_${page.status}`);
+      const pagePayload = await page.json() as BigQueryResponse;
+      rows.push(...decodeBigQueryRows<T>({ ...pagePayload, schema: pagePayload.schema ?? payload.schema }));
+      pageToken = pagePayload.pageToken;
+    }
+    return rows;
   }
 
-  async getDashboard(query: AnalyticsQuery): Promise<DashboardSnapshot> {
-    const { start, end } = resolveDateWindow(query);
-    const days = Math.round((end.getTime() - start.getTime()) / 86_400_000) + 1;
+  async getDashboard(query: AnalyticsQuery, context?: { firestoreToken?: string }): Promise<DashboardSnapshot> {
+    const { start, end, days } = queryWindow(query, this.timeZone);
     const previousEnd = new Date(start);
     previousEnd.setUTCDate(start.getUTCDate() - 1);
     const previousStart = new Date(previousEnd);
     previousStart.setUTCDate(previousEnd.getUTCDate() - days + 1);
+    if (query.range === "all") previousStart.setTime(start.getTime());
 
-    const scope = await resolveAnalyticsScope(query);
-    const params: NonNullable<Query["params"]> = {
+    const scope = await resolveAnalyticsScope(query, context?.firestoreToken);
+    const params = {
       clientId: scope.clientId,
       startDate: isoDate(start),
       endDate: isoDate(end),
@@ -291,7 +414,7 @@ export class BigQueryAnalyticsRepository implements AnalyticsRepository {
           AND campaign_id = allowed.campaignId
       )
     GROUP BY date, source, account_id, campaign_id
-    ORDER BY date`, params);
+    ORDER BY date`, bigQueryParameters(params));
 
     if (!rows.length) throw new Error("ANALYTICS_NO_DATA");
 
@@ -302,6 +425,7 @@ export class BigQueryAnalyticsRepository implements AnalyticsRepository {
     const channels = new Map<string, { spend: number; conversions: number }>();
     const currencies = new Set<string>();
     let updatedAt = "";
+    let currentRows = 0;
 
     for (const row of rows) {
       const date = text(row.date);
@@ -313,6 +437,7 @@ export class BigQueryAnalyticsRepository implements AnalyticsRepository {
         continue;
       }
 
+      currentRows += 1;
       add(current, row);
       const daily = trendByDate.get(date) ?? emptyTotals();
       add(daily, row);
@@ -321,7 +446,7 @@ export class BigQueryAnalyticsRepository implements AnalyticsRepository {
       const campaignKey = `${row.source}:${row.account_id}:${row.campaign_id}`;
       const campaign = campaigns.get(campaignKey) ?? {
         id: campaignKey,
-        name: row.campaign_name,
+        name: humanizeCampaignName(row.campaign_name, row.campaign_id),
         channel: channelLabel(row.source),
         status: campaignStatus(row.campaign_status),
         spend: 0,
@@ -341,8 +466,9 @@ export class BigQueryAnalyticsRepository implements AnalyticsRepository {
       channels.set(row.source, channel);
     }
 
+    if (!currentRows) throw new Error("ANALYTICS_NO_DATA");
     if (currencies.size > 1) throw new Error("ANALYTICS_MIXED_CURRENCIES");
-    const currency = [...currencies][0] ?? process.env.BIGQUERY_DEFAULT_CURRENCY ?? "COP";
+    const currency = [...currencies][0] ?? this.defaultCurrency;
     const metrics: MetricSummary[] = [
       { id: "spend", label: "Inversión", value: current.spend, previousValue: previousValue(current.spend, previous.spend), format: "currency", positiveWhen: "up" },
       { id: "impressions", label: "Impresiones", value: current.impressions, previousValue: previousValue(current.impressions, previous.impressions), format: "number", positiveWhen: "up" },
@@ -377,7 +503,7 @@ export class BigQueryAnalyticsRepository implements AnalyticsRepository {
       query,
       currency,
       updatedAt: updatedAt || new Date().toISOString(),
-      periodLabel: query.range === "custom" ? `${isoDate(start)} – ${isoDate(end)}` : `Últimos ${days} días`,
+      periodLabel: periodLabel(query, start, end, days),
       metrics,
       trend,
       campaigns: campaignRows,
@@ -386,11 +512,11 @@ export class BigQueryAnalyticsRepository implements AnalyticsRepository {
     };
   }
 
-  async getConcertSummary(query: ConcertQuery): Promise<ConcertSummary> {
-    const { start, end } = resolveDateWindow(query);
+  async getConcertSummary(query: ConcertQuery, context?: { firestoreToken?: string }): Promise<ConcertSummary> {
+    const { start, end } = queryWindow(query, this.timeZone);
 
-    const scope = await resolveConcertScope(query);
-    const params: NonNullable<Query["params"]> = {
+    const scope = await resolveConcertScope(query, context?.firestoreToken);
+    const params = {
       clientId: scope.clientId,
       startDate: isoDate(start),
       endDate: isoDate(end),
@@ -422,7 +548,7 @@ export class BigQueryAnalyticsRepository implements AnalyticsRepository {
         WHERE REGEXP_CONTAINS(campaign_name, pattern)
       )
     GROUP BY date, source, campaign_id
-    ORDER BY date`, params);
+    ORDER BY date`, concertQueryParameters(params));
 
     if (!rows.length) throw new Error("ANALYTICS_NO_DATA");
 

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { assertAdmin, assertProjectAccess, getRequestUser } from "@/lib/auth/server-session";
+import { assertAdmin, assertProjectAccess, getRequestUser, requestBearerToken } from "@/lib/auth/server-session";
+import { runtimeEnv } from "@/lib/runtime-env";
 
 export const dynamic = "force-dynamic";
 
@@ -22,12 +23,13 @@ export async function POST(request: Request) {
     assertProjectAccess(user, parsed.data.organizationId, parsed.data.projectId);
     assertAdmin(user);
 
-    const { getFirebaseAdminFirestore } = await import("@/lib/firebase/admin");
-    const db = getFirebaseAdminFirestore();
-    const doc = await db.collection("artists").add({
+    const { createFirestoreDocument } = await import("@/lib/firebase/firestore-rest");
+    const useServiceAccount = await runtimeEnv("FIRESTORE_USE_SERVICE_ACCOUNT") === "true";
+    const firebaseIdToken = useServiceAccount ? undefined : requestBearerToken(request) ?? undefined;
+    const doc = await createFirestoreDocument("artists", {
       projectId: parsed.data.projectId,
       displayName: parsed.data.displayName,
-    });
+    }, firebaseIdToken);
 
     return NextResponse.json(
       { data: { id: doc.id, projectId: parsed.data.projectId, displayName: parsed.data.displayName } },

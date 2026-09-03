@@ -80,11 +80,13 @@ projects/{projectId}
   organizationId, name, clientName, status
 
 campaigns/{campaignId}
-  projectId, name, objective, status
+  projectId, name, displayName?, objective, status
   source             // google_ads | meta_ads | tiktok_ads
   accountId          // account_id en BigQuery
   externalCampaignId // campaign_id en BigQuery
 ```
+
+`name` conserva el nombre original de la plataforma. `displayName` es opcional y permite definir una etiqueta editorial para la UI; si no existe, la aplicación genera una versión legible sin modificar el identificador ni el nombre fuente.
 
 Un proyecto puede agrupar campañas de múltiples canales. La aplicación traduce el ID interno de cada campaña a la tupla `source + accountId + externalCampaignId` antes de consultar BigQuery. Los documentos incompletos no aparecen en los selectores.
 

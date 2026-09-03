@@ -4,12 +4,15 @@ import { getFirestore, type Firestore } from "firebase/firestore";
 
 function config() {
   return {
-    apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
-    authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
-    projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
-    storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
-    messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
-    appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
+    // Firebase web configuration is public by design. These project defaults
+    // keep authentication available in static/edge builds where NEXT_PUBLIC
+    // variables cannot be injected after compilation.
+    apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY ?? "AIzaSyAxjF8mwzUJbSWLty-KkonVEXJxxr2JrAs",
+    authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN ?? "barbra-intelligence-69fe6.firebaseapp.com",
+    projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID ?? "barbra-intelligence-69fe6",
+    storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET ?? "barbra-intelligence-69fe6.firebasestorage.app",
+    messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID ?? "884904373436",
+    appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID ?? "1:884904373436:web:3c73cc3e89a43a4379b4b9",
   };
 }
 

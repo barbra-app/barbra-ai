@@ -3,6 +3,7 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { onAuthStateChanged, signInWithEmailAndPassword, type User } from "firebase/auth";
 import { ArrowRight, LoaderCircle, LockKeyhole } from "lucide-react";
+import { IntelligenceDashboardSkeleton } from "@/components/dashboard/intelligence-dashboard-skeleton";
 import { getFirebaseAuth, isFirebaseAuthEnabled } from "@/lib/firebase/client";
 
 type LoginMethod = "email" | null;
@@ -21,7 +22,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
   }, [configured]);
 
   if (!ready) {
-    return <div className="auth-loading"><LoaderCircle className="size-5 animate-spin" /> Preparando tu workspace…</div>;
+    return <IntelligenceDashboardSkeleton />;
   }
 
   if (!configured || user) return children;
