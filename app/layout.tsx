@@ -40,8 +40,24 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover", // habilita env(safe-area-inset-*) para iOS notch
-  themeColor: "#f5f1e9",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#f5f1e9" },
+    { media: "(prefers-color-scheme: dark)", color: "#141319" },
+  ],
 };
+
+// Applies a stored theme override before first paint so switching themes
+// (or reloading with one already chosen) never flashes the other theme.
+const THEME_BOOTSTRAP_SCRIPT = `
+(function () {
+  try {
+    var theme = localStorage.getItem("barbra-theme");
+    if (theme === "light" || theme === "dark") {
+      document.documentElement.setAttribute("data-theme", theme);
+    }
+  } catch (e) {}
+})();
+`;
 
 export default function RootLayout({
   children,
@@ -50,6 +66,9 @@ export default function RootLayout({
 }) {
   return (
     <html lang="es" className={`${spaceGrotesk.variable} ${inter.variable}`}>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: THEME_BOOTSTRAP_SCRIPT }} />
+      </head>
       <body className="min-h-dvh antialiased">
         {children}
       </body>

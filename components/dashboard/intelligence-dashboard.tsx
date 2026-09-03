@@ -30,6 +30,7 @@ import { AdvisorPanel } from "@/components/advisor/advisor-panel";
 import { ConcertsView } from "@/components/dashboard/concerts-view";
 import { DashboardSkeleton, IntelligenceDashboardSkeleton } from "@/components/dashboard/intelligence-dashboard-skeleton";
 import { LabeledSelect } from "@/components/dashboard/labeled-select";
+import { ThemeToggle } from "@/components/layout/theme-toggle";
 import { UserProfileMenu } from "@/components/profile/user-profile-menu";
 import {
   type AdvisorScope,
@@ -268,6 +269,7 @@ export function IntelligenceDashboard() {
           >
             <Sparkles className="size-4" /><span>Consultar</span>
           </button>
+          <ThemeToggle />
           <UserProfileMenu
             user={workspace.user}
             organizationName={organization?.name}
