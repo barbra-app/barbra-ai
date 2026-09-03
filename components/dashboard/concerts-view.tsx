@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { ChevronDown } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { ChevronDown, Pencil, Plus } from "lucide-react";
 import {
   Area,
   AreaChart,
@@ -16,6 +16,8 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import { AddEventDialog } from "@/components/dashboard/add-event-dialog";
+import { EditEventDialog } from "@/components/dashboard/edit-event-dialog";
 import { LabeledSelect } from "@/components/dashboard/labeled-select";
 import type { Artist, Concert, ConcertMetricKey, ConcertPlatformBreakdown, ConcertPlatformTrendPoint, ConcertSummary, DateRange } from "@/lib/domain/analytics";
 import { getFirebaseIdToken } from "@/lib/firebase/client";
@@ -72,6 +74,8 @@ export function ConcertsView({
   endDate,
   onArtistCreated,
   onConcertCreated,
+  onArtistUpdated,
+  onConcertUpdated,
   onSummaryUpdated,
 }: {
   organizationId: string;
@@ -87,6 +91,8 @@ export function ConcertsView({
   endDate: string;
   onArtistCreated: (artist: Artist) => void;
   onConcertCreated: (concert: Concert) => void;
+  onArtistUpdated: (artist: Artist) => void;
+  onConcertUpdated: (concert: Concert) => void;
   onSummaryUpdated?: (summary: ConcertSummary) => void;
 }) {
   const [summary, setSummary] = useState<ConcertSummary | null>(null);
@@ -130,19 +136,50 @@ export function ConcertsView({
     return () => controller.abort();
   }, [organizationId, projectId, artistId, concertId, range, startDate, endDate]);
 
-  const activeArtistName = artists.find((artist) => artist.id === artistId)?.displayName;
+  const activeArtist = artists.find((artist) => artist.id === artistId);
+  const activeConcert = concertId !== "all" ? concerts.find((concert) => concert.id === concertId) : undefined;
+  const activeArtistName = activeArtist?.displayName;
+  // The cover banner is the event's own photo only — the artist's photo
+  // never fills it, it only ever appears as the small avatar badge.
+  const coverPhotoUrl = activeConcert?.photoUrl;
+  const addEventDialogRef = useRef<HTMLDialogElement>(null);
+  const editEventDialogRef = useRef<HTMLDialogElement>(null);
 
   return (
     <main className="dashboard-main">
+      {coverPhotoUrl && <CoverPhoto src={coverPhotoUrl} avatarSrc={activeArtist?.photoUrl} />}
       <section className="dashboard-hero">
         <div>
-          <h1>{activeArtistName ?? projectName ?? "Conciertos"}</h1>
+          <div className="artist-identity">
+            {!coverPhotoUrl && activeArtist?.photoUrl && <img className="artist-avatar" src={activeArtist.photoUrl} alt="" />}
+            <h1>{activeArtistName ?? projectName ?? "Conciertos"}</h1>
+          </div>
           <p>
             {artists.length
               ? "Resumen multicanal por concierto"
               : "Aún no hay conciertos configurados para este proyecto"}
           </p>
         </div>
+        {isAdmin && (
+          <div className="dashboard-hero-actions">
+            {activeArtist && (
+              <button
+                type="button"
+                className="edit-event-button"
+                onClick={() => editEventDialogRef.current?.showModal()}
+              >
+                <Pencil className="size-4" />Editar
+              </button>
+            )}
+            <button
+              type="button"
+              className="add-event-button"
+              onClick={() => addEventDialogRef.current?.showModal()}
+            >
+              <Plus className="size-4" />Agregar evento
+            </button>
+          </div>
+        )}
       </section>
 
       {error ? (
@@ -233,16 +270,45 @@ export function ConcertsView({
       ) : null}
 
       {isAdmin && (
-        <CreateConcertForm
-          organizationId={organizationId}
-          projectId={projectId}
-          artists={artists}
-          selectedArtistId={artistId}
-          onArtistCreated={onArtistCreated}
-          onConcertCreated={onConcertCreated}
-        />
+        <>
+          <AddEventDialog
+            dialogRef={addEventDialogRef}
+            organizationId={organizationId}
+            projectId={projectId}
+            artists={artists}
+            selectedArtistId={artistId}
+            onArtistCreated={onArtistCreated}
+            onConcertCreated={(concert) => {
+              onConcertCreated(concert);
+              addEventDialogRef.current?.close();
+            }}
+          />
+          <EditEventDialog
+            dialogRef={editEventDialogRef}
+            organizationId={organizationId}
+            projectId={projectId}
+            artist={activeArtist}
+            concert={activeConcert}
+            onArtistUpdated={onArtistUpdated}
+            onConcertUpdated={onConcertUpdated}
+          />
+        </>
       )}
     </main>
+  );
+}
+
+function CoverPhoto({ src, avatarSrc }: { src: string; avatarSrc?: string }) {
+  // Always shown at the banner's full height with nothing cropped, repeated
+  // sideways to fill the width — the whole photo stays visible regardless
+  // of its own resolution or aspect ratio, never stretched or cropped.
+  return (
+    <div className="event-cover">
+      <div className="event-cover-media" style={{ backgroundImage: `url("${src}")` }}>
+        <div className="event-cover-scrim" />
+      </div>
+      {avatarSrc && <img className="artist-avatar is-overlap" src={avatarSrc} alt="" />}
+    </div>
   );
 }
 
@@ -436,113 +502,5 @@ function ConcertComparisonTooltip({ active, payload, label, format, currency }: 
         </div>
       ))}
     </div>
-  );
-}
-
-function CreateConcertForm({
-  organizationId,
-  projectId,
-  artists,
-  selectedArtistId,
-  onArtistCreated,
-  onConcertCreated,
-}: {
-  organizationId: string;
-  projectId: string;
-  artists: Artist[];
-  selectedArtistId: string;
-  onArtistCreated: (artist: Artist) => void;
-  onConcertCreated: (concert: Concert) => void;
-}) {
-  const [artistName, setArtistName] = useState("");
-  const [artistSubmitting, setArtistSubmitting] = useState(false);
-  const [artistError, setArtistError] = useState<string | null>(null);
-
-  const [concertArtistId, setConcertArtistId] = useState(selectedArtistId);
-  useEffect(() => setConcertArtistId(selectedArtistId), [selectedArtistId]);
-  const [concertName, setConcertName] = useState("");
-  const [namePattern, setNamePattern] = useState("");
-  const [concertSubmitting, setConcertSubmitting] = useState(false);
-  const [concertError, setConcertError] = useState<string | null>(null);
-
-  async function submitArtist(event: FormEvent) {
-    event.preventDefault();
-    setArtistSubmitting(true);
-    setArtistError(null);
-    try {
-      const token = await getFirebaseIdToken();
-      const response = await fetch("/api/artists", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-        body: JSON.stringify({ organizationId, projectId, displayName: artistName }),
-      });
-      const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error ?? "No fue posible crear el artista");
-      onArtistCreated(payload.data);
-      setArtistName("");
-    } catch (reason) {
-      setArtistError(reason instanceof Error ? reason.message : String(reason));
-    } finally {
-      setArtistSubmitting(false);
-    }
-  }
-
-  async function submitConcert(event: FormEvent) {
-    event.preventDefault();
-    setConcertSubmitting(true);
-    setConcertError(null);
-    try {
-      const token = await getFirebaseIdToken();
-      const response = await fetch("/api/concerts", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-        body: JSON.stringify({ organizationId, projectId, artistId: concertArtistId, displayName: concertName, namePattern }),
-      });
-      const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error ?? "No fue posible crear el concierto");
-      onConcertCreated(payload.data);
-      setConcertName("");
-      setNamePattern("");
-    } catch (reason) {
-      setConcertError(reason instanceof Error ? reason.message : String(reason));
-    } finally {
-      setConcertSubmitting(false);
-    }
-  }
-
-  return (
-    <article className="chart-card concert-admin-card">
-      <div className="card-heading">
-        <h2>Agregar artista o concierto</h2>
-      </div>
-      <div className="concert-admin-forms">
-        <form className="auth-field" onSubmit={submitArtist}>
-          <span>Nuevo artista</span>
-          <input value={artistName} onChange={(event) => setArtistName(event.target.value)} placeholder="Ej. Reykon" required />
-          <button className="auth-submit" type="submit" disabled={artistSubmitting || !artistName.trim()}>
-            {artistSubmitting ? "Creando…" : "Crear artista"}
-          </button>
-          {artistError && <small className="auth-error" aria-live="polite">{artistError}</small>}
-        </form>
-
-        <form className="auth-field" onSubmit={submitConcert}>
-          <span>Nuevo concierto</span>
-          <select value={concertArtistId} onChange={(event) => setConcertArtistId(event.target.value)} required>
-            <option value="" disabled>Selecciona un artista</option>
-            {artists.map((artist) => <option key={artist.id} value={artist.id}>{artist.displayName}</option>)}
-          </select>
-          <input value={concertName} onChange={(event) => setConcertName(event.target.value)} placeholder="Ej. Reykon — Bogotá 27 Jul" required />
-          <input value={namePattern} onChange={(event) => setNamePattern(event.target.value)} placeholder="Ej. BFL_Reykon" required />
-          <button
-            className="auth-submit"
-            type="submit"
-            disabled={concertSubmitting || !concertArtistId || !concertName.trim() || !namePattern.trim()}
-          >
-            {concertSubmitting ? "Creando…" : "Crear concierto"}
-          </button>
-          {concertError && <small className="auth-error" aria-live="polite">{concertError}</small>}
-        </form>
-      </div>
-    </article>
   );
 }

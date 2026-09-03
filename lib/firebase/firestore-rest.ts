@@ -109,6 +109,20 @@ export async function createFirestoreDocument(collection: string, data: Record<s
   return decodeDocument(await response.json());
 }
 
+export async function updateFirestoreDocument(collection: string, id: string, data: Record<string, unknown>, firebaseIdToken?: string) {
+  const url = new URL(`${await baseUrl()}/${encodeURIComponent(collection)}/${encodeURIComponent(id)}`);
+  // updateMask limits the write to exactly these fields — every other field
+  // on the existing document is left untouched (a plain PATCH would replace
+  // the whole document with just the fields sent).
+  for (const key of Object.keys(data)) url.searchParams.append("updateMask.fieldPaths", key);
+  const response = await authorizedFetch(url.toString(), {
+    method: "PATCH",
+    body: JSON.stringify({ fields: encodeFields(data) }),
+  }, firebaseIdToken);
+  if (!response.ok) throw new Error(`FIRESTORE_UPDATE_FAILED_${response.status}`);
+  return decodeDocument(await response.json());
+}
+
 export async function queryFirestoreDocuments(collection: string, field: string, stringValue: string, firebaseIdToken?: string) {
   const root = (await baseUrl()).replace(/\/documents$/, "");
   const response = await authorizedFetch(`${root}/documents:runQuery`, {

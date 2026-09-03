@@ -31,6 +31,7 @@ export interface Artist {
   id: string;
   projectId: string;
   displayName: string;
+  photoUrl?: string;
 }
 
 export interface Concert {
@@ -39,6 +40,7 @@ export interface Concert {
   artistId: string;
   displayName: string;
   namePattern: string;
+  photoUrl?: string;
 }
 
 export interface AppUser {

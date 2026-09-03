@@ -351,6 +351,12 @@ export function IntelligenceDashboard() {
               setArtistId(artist.id);
             }}
             onConcertCreated={(concert) => setWorkspace((current) => current ? { ...current, concerts: [...current.concerts, concert] } : current)}
+            onArtistUpdated={(artist) => setWorkspace((current) => current
+              ? { ...current, artists: current.artists.map((item) => item.id === artist.id ? artist : item) }
+              : current)}
+            onConcertUpdated={(concert) => setWorkspace((current) => current
+              ? { ...current, concerts: current.concerts.map((item) => item.id === concert.id ? concert : item) }
+              : current)}
             onSummaryUpdated={(summary) => setConcertUpdatedAt(summary.updatedAt)}
           />
         ) : (

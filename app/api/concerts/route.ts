@@ -80,11 +80,21 @@ const CreateConcertSchema = z.object({
 });
 
 export async function POST(request: Request) {
-  const body = await request.json().catch(() => null);
-  const parsed = CreateConcertSchema.safeParse(body);
+  const form = await request.formData().catch(() => null);
+  if (!form) {
+    return NextResponse.json({ error: "Invalid concert payload" }, { status: 400 });
+  }
+  const parsed = CreateConcertSchema.safeParse({
+    organizationId: form.get("organizationId"),
+    projectId: form.get("projectId"),
+    artistId: form.get("artistId"),
+    displayName: form.get("displayName"),
+    namePattern: form.get("namePattern"),
+  });
   if (!parsed.success) {
     return NextResponse.json({ error: "Invalid concert payload", details: parsed.error.flatten() }, { status: 400 });
   }
+  const photo = form.get("photo");
 
   try {
     const user = await getRequestUser(request);
@@ -99,11 +109,19 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "El artista no existe en este proyecto" }, { status: 404 });
     }
 
+    let photoUrl: string | undefined;
+    if (photo instanceof File && photo.size > 0) {
+      const { uploadPublicImage } = await import("@/lib/firebase/storage-rest");
+      const extension = photo.type === "image/png" ? "png" : photo.type === "image/webp" ? "webp" : "jpg";
+      photoUrl = await uploadPublicImage(`concerts/${parsed.data.projectId}/${Date.now()}.${extension}`, photo);
+    }
+
     const doc = await createFirestoreDocument("concerts", {
       projectId: parsed.data.projectId,
       artistId: parsed.data.artistId,
       displayName: parsed.data.displayName,
       namePattern: parsed.data.namePattern,
+      ...(photoUrl ? { photoUrl } : {}),
     }, firebaseIdToken);
 
     return NextResponse.json(
@@ -114,6 +132,7 @@ export async function POST(request: Request) {
           artistId: parsed.data.artistId,
           displayName: parsed.data.displayName,
           namePattern: parsed.data.namePattern,
+          photoUrl,
         },
       },
       { status: 201 },
@@ -125,7 +144,95 @@ export async function POST(request: Request) {
     if (error instanceof Error && error.message === "FORBIDDEN") {
       return NextResponse.json({ error: "Admin access required" }, { status: 403 });
     }
+    if (error instanceof Error && error.message === "STORAGE_UNSUPPORTED_TYPE") {
+      return NextResponse.json({ error: "La foto debe ser JPG, PNG o WEBP" }, { status: 400 });
+    }
+    if (error instanceof Error && error.message === "STORAGE_FILE_TOO_LARGE") {
+      return NextResponse.json({ error: "La foto no puede pesar más de 5MB" }, { status: 400 });
+    }
     console.error("[concerts] create failed", error);
     return NextResponse.json({ error: "Unable to create concert" }, { status: 500 });
+  }
+}
+
+const UpdateConcertSchema = z.object({
+  id: z.string().min(1).max(200),
+  organizationId: z.string().min(1).max(120),
+  projectId: z.string().min(1).max(120),
+  artistId: z.string().min(1).max(120),
+  displayName: z.string().min(1).max(200),
+  namePattern: z.string().min(1).max(200),
+});
+
+export async function PATCH(request: Request) {
+  const form = await request.formData().catch(() => null);
+  if (!form) {
+    return NextResponse.json({ error: "Invalid concert payload" }, { status: 400 });
+  }
+  const parsed = UpdateConcertSchema.safeParse({
+    id: form.get("id"),
+    organizationId: form.get("organizationId"),
+    projectId: form.get("projectId"),
+    artistId: form.get("artistId"),
+    displayName: form.get("displayName"),
+    namePattern: form.get("namePattern"),
+  });
+  if (!parsed.success) {
+    return NextResponse.json({ error: "Invalid concert payload", details: parsed.error.flatten() }, { status: 400 });
+  }
+  const photo = form.get("photo");
+
+  try {
+    const user = await getRequestUser(request);
+    assertProjectAccess(user, parsed.data.organizationId, parsed.data.projectId);
+    assertAdmin(user);
+
+    const { getFirestoreDocument, updateFirestoreDocument } = await import("@/lib/firebase/firestore-rest");
+    const useServiceAccount = await runtimeEnv("FIRESTORE_USE_SERVICE_ACCOUNT") === "true";
+    const firebaseIdToken = useServiceAccount ? undefined : requestBearerToken(request) ?? undefined;
+    const existing = await getFirestoreDocument("concerts", parsed.data.id, firebaseIdToken);
+    if (!existing.exists || existing.data.projectId !== parsed.data.projectId) {
+      return NextResponse.json({ error: "El evento no existe en este proyecto" }, { status: 404 });
+    }
+
+    let photoUrl: string | undefined;
+    if (photo instanceof File && photo.size > 0) {
+      const { uploadPublicImage } = await import("@/lib/firebase/storage-rest");
+      const extension = photo.type === "image/png" ? "png" : photo.type === "image/webp" ? "webp" : "jpg";
+      photoUrl = await uploadPublicImage(`concerts/${parsed.data.projectId}/${Date.now()}.${extension}`, photo);
+    }
+
+    await updateFirestoreDocument("concerts", parsed.data.id, {
+      artistId: parsed.data.artistId,
+      displayName: parsed.data.displayName,
+      namePattern: parsed.data.namePattern,
+      ...(photoUrl ? { photoUrl } : {}),
+    }, firebaseIdToken);
+
+    return NextResponse.json({
+      data: {
+        id: parsed.data.id,
+        projectId: parsed.data.projectId,
+        artistId: parsed.data.artistId,
+        displayName: parsed.data.displayName,
+        namePattern: parsed.data.namePattern,
+        photoUrl: photoUrl ?? (existing.data.photoUrl ? String(existing.data.photoUrl) : undefined),
+      },
+    });
+  } catch (error) {
+    if (error instanceof Error && error.message === "UNAUTHENTICATED") {
+      return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+    }
+    if (error instanceof Error && error.message === "FORBIDDEN") {
+      return NextResponse.json({ error: "Admin access required" }, { status: 403 });
+    }
+    if (error instanceof Error && error.message === "STORAGE_UNSUPPORTED_TYPE") {
+      return NextResponse.json({ error: "La foto debe ser JPG, PNG o WEBP" }, { status: 400 });
+    }
+    if (error instanceof Error && error.message === "STORAGE_FILE_TOO_LARGE") {
+      return NextResponse.json({ error: "La foto no puede pesar más de 5MB" }, { status: 400 });
+    }
+    console.error("[concerts] update failed", error);
+    return NextResponse.json({ error: "Unable to update concert" }, { status: 500 });
   }
 }

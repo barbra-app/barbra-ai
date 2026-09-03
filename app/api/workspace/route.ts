@@ -62,6 +62,7 @@ export async function GET(request: Request) {
         id: doc.id,
         projectId: String(doc.data.projectId ?? ""),
         displayName: String(doc.data.displayName ?? doc.id),
+        photoUrl: doc.data.photoUrl ? String(doc.data.photoUrl) : undefined,
       })))
       .sort((a, b) => a.displayName.localeCompare(b.displayName, "es"));
     const concerts = concertSnapshots
@@ -76,6 +77,7 @@ export async function GET(request: Request) {
           artistId: String(data.artistId),
           displayName: String(data.displayName ?? doc.id),
           namePattern: String(data.namePattern),
+          photoUrl: data.photoUrl ? String(data.photoUrl) : undefined,
         }];
       }))
       .sort((a, b) => a.displayName.localeCompare(b.displayName, "es"));
