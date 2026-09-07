@@ -46,6 +46,16 @@ service cloud.firestore {
       allow write: if isAdmin() && canAccessProject(request.resource.data.projectId);
     }
 
+    match /artists/{artistId} {
+      allow read: if canAccessProject(resource.data.projectId);
+      allow write: if isAdmin() && canAccessProject(request.resource.data.projectId);
+    }
+
+    match /concerts/{concertId} {
+      allow read: if canAccessProject(resource.data.projectId);
+      allow write: if isAdmin() && canAccessProject(request.resource.data.projectId);
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }

@@ -7,7 +7,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowUp, ChevronRight, CircleAlert, Lightbulb, RefreshCw, Sparkles, X } from "lucide-react";
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Markdown } from "@/components/chat/markdown";
-import type { DashboardSnapshot } from "@/lib/domain/analytics";
+import type { AdvisorInsight, AdvisorScope, DashboardSnapshot } from "@/lib/domain/analytics";
 import { normalizeOutput } from "@/lib/mcp/normalize";
 import { calculateDelta } from "@/lib/data/analytics-repository";
 import { formatCurrency, formatNumber, formatPercent } from "@/lib/utils";
@@ -27,7 +27,19 @@ const QUESTIONS = [
   "Compara la eficiencia por canal",
 ];
 
-export function AdvisorPanel({ snapshot, onClose }: { snapshot: DashboardSnapshot; onClose: () => void }) {
+export function AdvisorPanel({
+  scope,
+  periodLabel,
+  updatedAt,
+  insights = [],
+  onClose,
+}: {
+  scope: AdvisorScope;
+  periodLabel: string;
+  updatedAt: string;
+  insights?: AdvisorInsight[];
+  onClose: () => void;
+}) {
   const transport = useMemo(() => new DefaultChatTransport({ api: "/api/chat" }), []);
   const { messages, sendMessage, setMessages, status } = useChat({ transport });
   const [input, setInput] = useState("");
@@ -44,14 +56,7 @@ export function AdvisorPanel({ snapshot, onClose }: { snapshot: DashboardSnapsho
     sendMessage(
       { text: question.trim() },
       {
-        body: {
-          organizationId: snapshot.query.organizationId,
-          projectId: snapshot.query.projectId,
-          campaignId: snapshot.query.campaignId ?? null,
-          range: snapshot.query.range,
-          startDate: snapshot.query.startDate,
-          endDate: snapshot.query.endDate,
-        },
+        body: scope,
         headers: token ? { Authorization: `Bearer ${token}` } : undefined,
       },
     );
@@ -73,14 +78,14 @@ export function AdvisorPanel({ snapshot, onClose }: { snapshot: DashboardSnapsho
 
       <div className="advisor-context">
         <span className="status-dot" />
-        <span>{snapshot.periodLabel}</span>
+        <span>{periodLabel}</span>
         <span>·</span>
-        <span>Actualizado {new Date(snapshot.updatedAt).toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" })}</span>
+        <span>Actualizado {new Date(updatedAt).toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" })}</span>
       </div>
 
       <div className="advisor-scroll" ref={scrollRef}>
         {messages.length === 0 ? (
-          <AdvisorHome snapshot={snapshot} onAsk={submit} />
+          <AdvisorHome insights={insights} onAsk={submit} />
         ) : (
           <div className="advisor-thread">
             {messages.map((message) => <AdvisorMessage key={message.id} message={message} />)}
@@ -110,13 +115,13 @@ export function AdvisorPanel({ snapshot, onClose }: { snapshot: DashboardSnapsho
   );
 }
 
-function AdvisorHome({ snapshot, onAsk }: { snapshot: DashboardSnapshot; onAsk: (question: string) => void }) {
-  const primary = snapshot.insights[0];
+function AdvisorHome({ insights, onAsk }: { insights: AdvisorInsight[]; onAsk: (question: string) => void }) {
+  const primary = insights[0];
   return (
     <div className="advisor-home">
       <div className="advisor-greeting">
         <strong>Barbra Intelligence está lista.</strong>
-        <p>{snapshot.insights.length} señales detectadas en este periodo.</p>
+        <p>{insights.length ? `${insights.length} señales detectadas en este periodo.` : "Pregúntame sobre el rendimiento seleccionado."}</p>
       </div>
 
       {primary && (
@@ -163,6 +168,8 @@ function AdvisorPart({ part }: { part: any }) {
   if (name === "get_dashboard_snapshot") return <SnapshotAnswer snapshot={data} />;
   if (name === "get_campaign_performance") return <CampaignAnswer data={data} />;
   if (name === "get_channel_mix") return <ChannelAnswer data={data} />;
+  if (name === "get_concert_summary") return <ConcertSummaryAnswer byPlatform={data?.byPlatform ?? []} currency={data?.currency ?? "COP"} />;
+  if (name === "get_concert_campaigns") return <ConcertCampaignAnswer rows={(data?.rows ?? []).map((row: any) => ({ id: row.campaignId, name: row.campaignName, roas: row.roas, spend: row.spend }))} currency={data?.currency ?? "COP"} />;
   return null;
 }
 
@@ -239,6 +246,32 @@ function CampaignAnswer({ data }: { data: any }) {
         ))}
       </div>
       {data?.verifiedInsight && <p className="verified-insight">{data.verifiedInsight}</p>}
+    </div>
+  );
+}
+
+function ConcertCampaignAnswer({ rows, currency }: { rows: any[]; currency: string }) {
+  return (
+    <div className="visual-answer campaign-answer">
+      {rows.slice(0, 4).map((row) => (
+        <div key={row.id}><span>{row.name}</span><strong>{Number(row.roas).toFixed(2)}×</strong><small>{formatCurrency(Number(row.spend), currency)}</small></div>
+      ))}
+    </div>
+  );
+}
+
+function ConcertSummaryAnswer({ byPlatform, currency }: { byPlatform: any[]; currency: string }) {
+  const max = Math.max(...byPlatform.map((row) => Number(row.billedSpend)), 1);
+  const labels: Record<string, string> = { google_ads: "Google Ads", meta_ads: "Meta Ads", tiktok_ads: "TikTok Ads" };
+  return (
+    <div className="visual-answer channel-answer">
+      {byPlatform.map((row) => (
+        <div key={row.source}>
+          <div><span>{labels[row.source] ?? row.source}</span><strong>{formatNumber(Number(row.conversions))} conv.</strong></div>
+          <i><b style={{ width: `${(Number(row.billedSpend) / max) * 100}%` }} /></i>
+          <small>{formatCurrency(Number(row.billedSpend), currency)}</small>
+        </div>
+      ))}
     </div>
   );
 }

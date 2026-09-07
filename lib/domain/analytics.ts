@@ -27,6 +27,22 @@ export interface Campaign {
   status: CampaignStatus;
 }
 
+export interface Artist {
+  id: string;
+  projectId: string;
+  displayName: string;
+  photoUrl?: string;
+}
+
+export interface Concert {
+  id: string;
+  projectId: string;
+  artistId: string;
+  displayName: string;
+  namePattern: string;
+  photoUrl?: string;
+}
+
 export interface AppUser {
   uid: string;
   name: string;
@@ -44,6 +60,93 @@ export interface AnalyticsQuery {
   range: DateRange;
   startDate?: string;
   endDate?: string;
+}
+
+export interface ConcertQuery {
+  organizationId: string;
+  projectId: string;
+  artistId: string;
+  concertId?: string | null;
+  range: DateRange;
+  startDate?: string;
+  endDate?: string;
+}
+
+export interface ConcertCampaignBreakdown {
+  campaignId: string;
+  campaignName: string;
+  spend: number;
+  billedSpend: number;
+  impressions: number;
+  clicks: number;
+  conversions: number;
+  revenue: number;
+  ctr: number;
+  cpc: number;
+  cpa: number;
+  roas: number;
+}
+
+export interface ConcertPlatformBreakdown {
+  source: string;
+  spend: number;
+  billedSpend: number;
+  impressions: number;
+  clicks: number;
+  conversions: number;
+  revenue: number;
+  ctr: number;
+  cpc: number;
+  cpa: number;
+  roas: number;
+  campaigns: ConcertCampaignBreakdown[];
+}
+
+export interface ConcertTrendPoint {
+  date: string;
+  billedSpend: number;
+  conversions: number;
+}
+
+export type ConcertMetricKey = "spend" | "billedSpend" | "impressions" | "clicks" | "conversions" | "revenue" | "ctr" | "cpc" | "cpa" | "roas";
+
+// What Barbra Intelligence (the chat advisor) is scoped to. Either a
+// campaign-level context (Dashboard tab) or an artist/concert context
+// (Campañas tab) — never both.
+export interface AdvisorScope {
+  organizationId: string;
+  projectId: string;
+  campaignId?: string | null;
+  artistId?: string;
+  concertId?: string | null;
+  range?: DateRange;
+  startDate?: string;
+  endDate?: string;
+}
+
+export interface ConcertPlatformTrendPoint {
+  date: string;
+  source: string;
+  spend: number;
+  billedSpend: number;
+  impressions: number;
+  clicks: number;
+  conversions: number;
+  revenue: number;
+  ctr: number;
+  cpc: number;
+  cpa: number;
+  roas: number;
+}
+
+export interface ConcertSummary {
+  query: ConcertQuery;
+  currency: string;
+  updatedAt: string;
+  total: ConcertPlatformBreakdown;
+  byPlatform: ConcertPlatformBreakdown[];
+  trend: ConcertTrendPoint[];
+  platformTrend: ConcertPlatformTrendPoint[];
 }
 
 export interface MetricSummary {

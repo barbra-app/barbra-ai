@@ -62,3 +62,7 @@ export function assertProjectAccess(user: AppUser, organizationId: string, proje
     throw new Error("FORBIDDEN");
   }
 }
+
+export function assertAdmin(user: AppUser) {
+  if (user.role !== "admin") throw new Error("FORBIDDEN");
+}

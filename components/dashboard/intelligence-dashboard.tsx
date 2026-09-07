@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState } from "react";
 import {
   Activity,
   CalendarDays,
-  ChevronDown,
   CircleDollarSign,
   Gauge,
   LayoutDashboard,
@@ -28,11 +27,17 @@ import {
   YAxis,
 } from "recharts";
 import { AdvisorPanel } from "@/components/advisor/advisor-panel";
+import { ConcertsView } from "@/components/dashboard/concerts-view";
 import { DashboardSkeleton, IntelligenceDashboardSkeleton } from "@/components/dashboard/intelligence-dashboard-skeleton";
+import { LabeledSelect } from "@/components/dashboard/labeled-select";
+import { ThemeToggle } from "@/components/layout/theme-toggle";
 import { UserProfileMenu } from "@/components/profile/user-profile-menu";
 import {
+  type AdvisorScope,
   type AppUser,
+  type Artist,
   type Campaign,
+  type Concert,
   type DashboardSnapshot,
   type DateRange,
   type DateRangePreset,
@@ -53,19 +58,6 @@ const METRIC_ICONS = {
   roas: TrendingUp,
 };
 
-const CRITICAL_METRICS = new Set(["spend", "conversions", "cpa", "roas"]);
-const CHANNEL_COLORS = [
-  "var(--color-chart-1)",
-  "var(--color-chart-2)",
-  "var(--color-chart-3)",
-  "var(--color-chart-4)",
-];
-
-type DashboardIssue = {
-  kind: "empty" | "error";
-  message: string;
-};
-
 function todayInBogota() {
   return new Intl.DateTimeFormat("en-CA", {
     timeZone: "America/Bogota",
@@ -81,8 +73,22 @@ function daysBefore(date: string, days: number) {
   return value.toISOString().slice(0, 10);
 }
 
+const CRITICAL_METRICS = new Set(["spend", "conversions", "cpa", "roas"]);
+const CHANNEL_COLORS = [
+  "var(--color-chart-1)",
+  "var(--color-chart-2)",
+  "var(--color-chart-3)",
+  "var(--color-chart-4)",
+];
+
+type DashboardIssue = {
+  kind: "empty" | "error";
+  message: string;
+};
+
 export function IntelligenceDashboard() {
-  const [workspace, setWorkspace] = useState<{ user: AppUser; organizations: Organization[]; projects: Project[]; campaigns: Campaign[] } | null>(null);
+  const [view, setView] = useState<"dashboard" | "concerts">("dashboard");
+  const [workspace, setWorkspace] = useState<{ user: AppUser; organizations: Organization[]; projects: Project[]; campaigns: Campaign[]; artists: Artist[]; concerts: Concert[] } | null>(null);
   const [workspaceReady, setWorkspaceReady] = useState(false);
   const [workspaceError, setWorkspaceError] = useState<string | null>(null);
   const [organizationId, setOrganizationId] = useState("");
@@ -93,6 +99,10 @@ export function IntelligenceDashboard() {
   const [projectId, setProjectId] = useState("");
   const availableCampaigns = useMemo(() => workspace?.campaigns.filter((campaign) => campaign.projectId === projectId) ?? [], [projectId, workspace]);
   const [campaignId, setCampaignId] = useState<string>("all");
+  const availableArtists = useMemo(() => workspace?.artists.filter((artist) => artist.projectId === projectId) ?? [], [projectId, workspace]);
+  const [artistId, setArtistId] = useState<string>("");
+  const artistConcerts = useMemo(() => workspace?.concerts.filter((concert) => concert.artistId === artistId) ?? [], [artistId, workspace]);
+  const [concertId, setConcertId] = useState<string>("all");
   const [range, setRange] = useState<DateRange>("30d");
   const today = useMemo(todayInBogota, []);
   const [calendarOpen, setCalendarOpen] = useState(false);
@@ -101,6 +111,7 @@ export function IntelligenceDashboard() {
   const [draftStartDate, setDraftStartDate] = useState(customStartDate);
   const [draftEndDate, setDraftEndDate] = useState(customEndDate);
   const [snapshot, setSnapshot] = useState<DashboardSnapshot | null>(null);
+  const [concertUpdatedAt, setConcertUpdatedAt] = useState<string | null>(null);
   const [advisorOpen, setAdvisorOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [issue, setIssue] = useState<DashboardIssue | null>(null);
@@ -145,6 +156,12 @@ export function IntelligenceDashboard() {
   }, [availableProjects, projectId]);
 
   useEffect(() => setCampaignId("all"), [projectId]);
+
+  useEffect(() => {
+    if (!availableArtists.some((artist) => artist.id === artistId)) setArtistId(availableArtists[0]?.id ?? "");
+  }, [availableArtists, artistId]);
+
+  useEffect(() => setConcertId("all"), [artistId]);
 
   useEffect(() => {
     if (!workspaceReady || !organizationId || !projectId) return;
@@ -205,6 +222,24 @@ export function IntelligenceDashboard() {
   if (!workspaceReady) return <IntelligenceDashboardSkeleton />;
   if (!workspace) return <WorkspaceLoadError message={workspaceError ?? "No fue posible cargar tus accesos"} />;
 
+  const rangeLabel = range === "custom" ? `${customStartDate} – ${customEndDate}` : `Últimos ${range.replace("d", "")} días`;
+  const advisorScope: AdvisorScope | null = view === "dashboard"
+    ? (organizationId && projectId
+      ? {
+        organizationId,
+        projectId,
+        campaignId: campaignId !== "all" ? campaignId : null,
+        range,
+        startDate: range === "custom" ? customStartDate : undefined,
+        endDate: range === "custom" ? customEndDate : undefined,
+      }
+      : null)
+    : (organizationId && projectId && artistId ? { organizationId, projectId, artistId, concertId: concertId !== "all" ? concertId : null } : null);
+  const advisorReady = view === "dashboard" ? Boolean(snapshot) : Boolean(advisorScope);
+  const advisorPeriodLabel = view === "dashboard" ? (snapshot?.periodLabel ?? rangeLabel) : rangeLabel;
+  const advisorUpdatedAt = view === "dashboard" ? (snapshot?.updatedAt ?? new Date().toISOString()) : (concertUpdatedAt ?? new Date().toISOString());
+  const advisorInsights = view === "dashboard" ? snapshot?.insights : undefined;
+
   return (
     <div className={cn("intelligence-shell", advisorOpen && "advisor-is-open")}>
       <header className="intelligence-topbar">
@@ -213,8 +248,8 @@ export function IntelligenceDashboard() {
         </div>
 
         <nav className="product-nav" aria-label="Navegación principal">
-          <button className="active"><LayoutDashboard className="size-4" />Dashboard</button>
-          <button><Megaphone className="size-4" />Campañas</button>
+          <button className={view === "dashboard" ? "active" : ""} onClick={() => setView("dashboard")}><LayoutDashboard className="size-4" />Dashboard</button>
+          <button className={view === "concerts" ? "active" : ""} onClick={() => setView("concerts")}><Megaphone className="size-4" />Campañas</button>
           <button
             className={advisorOpen ? "active" : ""}
             onClick={() => setAdvisorOpen((open) => !open)}
@@ -234,6 +269,7 @@ export function IntelligenceDashboard() {
           >
             <Sparkles className="size-4" /><span>Consultar</span>
           </button>
+          <ThemeToggle />
           <UserProfileMenu
             user={workspace.user}
             organizationName={organization?.name}
@@ -248,7 +284,22 @@ export function IntelligenceDashboard() {
         <div className="workspace-selectors">
           <LabeledSelect label="Organización" value={organizationId} onChange={setOrganizationId} options={workspace.organizations.map((item) => ({ value: item.id, label: item.name }))} disabled={workspace.user.role === "user"} />
           <LabeledSelect label="Proyecto" value={projectId} onChange={setProjectId} options={availableProjects.map((item) => ({ value: item.id, label: item.name }))} />
-          <LabeledSelect label="Campaña" value={campaignId} onChange={setCampaignId} options={[{ value: "all", label: "Todas las campañas" }, ...availableCampaigns.map((item) => ({ value: item.id, label: item.name }))]} />
+          {view === "dashboard" ? (
+            <LabeledSelect label="Campaña" value={campaignId} onChange={setCampaignId} options={[{ value: "all", label: "Todas las campañas" }, ...availableCampaigns.map((item) => ({ value: item.id, label: item.name }))]} />
+          ) : (
+            <>
+              <LabeledSelect label="Artista" value={artistId} onChange={setArtistId} options={availableArtists.map((item) => ({ value: item.id, label: item.displayName }))} />
+              <LabeledSelect
+                label="Fecha"
+                value={concertId}
+                onChange={setConcertId}
+                options={[
+                  { value: "all", label: `Resumen (${artistConcerts.length} fecha${artistConcerts.length === 1 ? "" : "s"})` },
+                  ...artistConcerts.map((item) => ({ value: item.id, label: item.displayName })),
+                ]}
+              />
+            </>
+          )}
         </div>
         <div className="range-picker">
           <div className="range-control" aria-label="Rango de fechas">
@@ -282,68 +333,90 @@ export function IntelligenceDashboard() {
       </div>
 
       <div className="intelligence-content">
-        <main className="dashboard-main">
-          <section className="dashboard-hero">
-            <div>
-              <h1>{campaign ? campaign.name : project?.name}</h1>
-              <p>
-                {snapshot?.periodLabel
-                  ?? (issue?.kind === "empty"
-                    ? range === "custom" ? `${customStartDate} – ${customEndDate}` : `Últimos ${range.replace("d", "")} días`
-                    : "Consultando periodo")}
-              </p>
-            </div>
-            <div className={cn("data-status", issue && "is-neutral")} aria-live="polite">
-              <span />
-              {issue?.kind === "empty"
-                ? "Sin actividad reciente"
-                : issue?.kind === "error"
-                  ? "No disponible"
-                  : snapshot
-                    ? `Actualizado ${new Date(snapshot.updatedAt).toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" })}`
-                    : "Actualizando"}
-            </div>
-          </section>
+        {view === "concerts" ? (
+          <ConcertsView
+            organizationId={organizationId}
+            projectId={projectId}
+            projectName={project?.name}
+            artists={availableArtists}
+            concerts={workspace.concerts.filter((concert) => concert.projectId === projectId)}
+            artistId={artistId}
+            concertId={concertId}
+            isAdmin={workspace.user.role === "admin"}
+            range={range}
+            startDate={customStartDate}
+            endDate={customEndDate}
+            onArtistCreated={(artist) => {
+              setWorkspace((current) => current ? { ...current, artists: [...current.artists, artist] } : current);
+              setArtistId(artist.id);
+            }}
+            onConcertCreated={(concert) => setWorkspace((current) => current ? { ...current, concerts: [...current.concerts, concert] } : current)}
+            onArtistUpdated={(artist) => setWorkspace((current) => current
+              ? { ...current, artists: current.artists.map((item) => item.id === artist.id ? artist : item) }
+              : current)}
+            onConcertUpdated={(concert) => setWorkspace((current) => current
+              ? { ...current, concerts: current.concerts.map((item) => item.id === concert.id ? concert : item) }
+              : current)}
+            onSummaryUpdated={(summary) => setConcertUpdatedAt(summary.updatedAt)}
+          />
+        ) : (
+          <main className="dashboard-main">
+            <section className="dashboard-hero">
+              <div>
+                <h1>{campaign ? campaign.name : project?.name}</h1>
+                <p>
+                  {snapshot?.periodLabel
+                    ?? (issue?.kind === "empty"
+                      ? range === "custom" ? `${customStartDate} – ${customEndDate}` : `Últimos ${range.replace("d", "")} días`
+                      : "Consultando periodo")}
+                </p>
+              </div>
+              <div className={cn("data-status", issue && "is-neutral")} aria-live="polite">
+                <span />
+                {issue?.kind === "empty"
+                  ? "Sin actividad reciente"
+                  : issue?.kind === "error"
+                    ? "No disponible"
+                    : snapshot
+                      ? `Actualizado ${new Date(snapshot.updatedAt).toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" })}`
+                      : "Actualizando"}
+              </div>
+            </section>
 
-          {issue?.kind === "empty" ? (
-            <DashboardEmptyState
-              campaignSelected={Boolean(campaign)}
-              range={range}
-              onShowAllCampaigns={() => setCampaignId("all")}
-              onTryNinetyDays={() => setRange("90d")}
-            />
-          ) : issue?.kind === "error" ? <DashboardError message={issue.message} /> : !snapshot ? <DashboardSkeleton /> : (
-            <div className={loading ? "is-refreshing" : undefined}>
-              <section className="kpi-grid" aria-label="Métricas críticas">
-                {snapshot.metrics.filter((metric) => CRITICAL_METRICS.has(metric.id)).map((metric) => (
-                  <KpiCard key={metric.id} metric={metric} currency={snapshot.currency} />
-                ))}
-              </section>
-              <section className="analytics-grid">
-                <PerformanceChart snapshot={snapshot} />
-                <ChannelMix snapshot={snapshot} />
-              </section>
-            </div>
-          )}
-        </main>
+            {issue?.kind === "empty" ? (
+              <DashboardEmptyState
+                campaignSelected={Boolean(campaign)}
+                range={range}
+                onShowAllCampaigns={() => setCampaignId("all")}
+                onTryNinetyDays={() => setRange("90d")}
+              />
+            ) : issue?.kind === "error" ? <DashboardError message={issue.message} /> : !snapshot ? <DashboardSkeleton /> : (
+              <div className={loading ? "is-refreshing" : undefined}>
+                <section className="kpi-grid" aria-label="Métricas críticas">
+                  {snapshot.metrics.filter((metric) => CRITICAL_METRICS.has(metric.id)).map((metric) => (
+                    <KpiCard key={metric.id} metric={metric} currency={snapshot.currency} />
+                  ))}
+                </section>
+                <section className="analytics-grid">
+                  <PerformanceChart snapshot={snapshot} />
+                  <ChannelMix snapshot={snapshot} />
+                </section>
+              </div>
+            )}
+          </main>
+        )}
 
-        {snapshot && advisorOpen && <AdvisorPanel snapshot={snapshot} onClose={() => setAdvisorOpen(false)} />}
+        {advisorReady && advisorOpen && advisorScope && (
+          <AdvisorPanel
+            scope={advisorScope}
+            periodLabel={advisorPeriodLabel}
+            updatedAt={advisorUpdatedAt}
+            insights={advisorInsights}
+            onClose={() => setAdvisorOpen(false)}
+          />
+        )}
       </div>
     </div>
-  );
-}
-
-function LabeledSelect({ label, value, onChange, options, disabled = false }: { label: string; value: string; onChange: (value: string) => void; options: { value: string; label: string }[]; disabled?: boolean }) {
-  return (
-    <label className="labeled-select">
-      <span>{label}</span>
-      <span className="select-control">
-        <select value={value} onChange={(event) => onChange(event.target.value)} aria-label={label} disabled={disabled}>
-          {options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-        </select>
-        <ChevronDown className="size-3.5" />
-      </span>
-    </label>
   );
 }
 

@@ -1,5 +1,5 @@
 import { getFirestoreDocument, queryFirestoreDocuments } from "@/lib/firebase/firestore-rest";
-import type { AnalyticsQuery } from "@/lib/domain/analytics";
+import type { AnalyticsQuery, ConcertQuery } from "@/lib/domain/analytics";
 
 export interface CampaignAnalyticsScope {
   source: string;
@@ -58,4 +58,51 @@ export async function resolveAnalyticsScope(query: AnalyticsQuery, firebaseIdTok
 
   if (!scopes.length) throw new Error("ANALYTICS_PROJECT_NOT_CONFIGURED");
   return { clientId, campaigns: scopes };
+}
+
+export interface ConcertAnalyticsScope {
+  clientId: string;
+  namePatterns: string[];
+}
+
+/**
+ * Translates a Firestore artist/concert selection into the raw campaign_name
+ * prefixes used to match campaigns across sources in BigQuery. A single
+ * concert resolves to one pattern; omitting concertId resolves to every
+ * concert under that artist (the combined multi-date summary).
+ */
+export async function resolveConcertScope(query: ConcertQuery, firebaseIdToken?: string): Promise<ConcertAnalyticsScope> {
+  const [organization, project] = await Promise.all([
+    getFirestoreDocument("organizations", query.organizationId, firebaseIdToken),
+    getFirestoreDocument("projects", query.projectId, firebaseIdToken),
+  ]);
+
+  if (!organization.exists || !project.exists) throw new Error("ANALYTICS_SCOPE_NOT_FOUND");
+  if (requiredString(project.data.organizationId) !== query.organizationId) {
+    throw new Error("ANALYTICS_SCOPE_MISMATCH");
+  }
+
+  const clientId = requiredString(organization.data.analyticsClientId);
+  if (!clientId) throw new Error("ANALYTICS_CLIENT_NOT_CONFIGURED");
+
+  if (query.concertId) {
+    const concert = await getFirestoreDocument("concerts", query.concertId, firebaseIdToken);
+    if (!concert.exists || requiredString(concert.data.projectId) !== query.projectId || requiredString(concert.data.artistId) !== query.artistId) {
+      throw new Error("ANALYTICS_CONCERT_NOT_FOUND");
+    }
+    const pattern = requiredString(concert.data.namePattern);
+    if (!pattern) throw new Error("ANALYTICS_CONCERT_NOT_CONFIGURED");
+    return { clientId, namePatterns: [pattern] };
+  }
+
+  // Firestore REST queries only filter on one field; narrow by artistId and
+  // verify projectId in memory rather than adding a compound index.
+  const concerts = await queryFirestoreDocuments("concerts", "artistId", query.artistId, firebaseIdToken);
+  const namePatterns = concerts
+    .filter((document) => requiredString(document.data.projectId) === query.projectId)
+    .map((document) => requiredString(document.data.namePattern))
+    .filter((pattern): pattern is string => pattern !== null);
+
+  if (!namePatterns.length) throw new Error("ANALYTICS_ARTIST_NOT_CONFIGURED");
+  return { clientId, namePatterns };
 }

@@ -1,6 +1,6 @@
 import type { AnalyticsRepository } from "@/lib/data/analytics-repository";
 import { humanizeCampaignName } from "@/lib/campaign-name";
-import { resolveAnalyticsScope, type CampaignAnalyticsScope } from "@/lib/data/analytics-scope";
+import { resolveAnalyticsScope, resolveConcertScope, type CampaignAnalyticsScope } from "@/lib/data/analytics-scope";
 import { googleAccessToken } from "@/lib/google/access-token";
 import type {
   AdvisorInsight,
@@ -8,7 +8,12 @@ import type {
   CampaignPerformance,
   CampaignStatus,
   ChannelBreakdown,
+  ConcertCampaignBreakdown,
+  ConcertPlatformBreakdown,
+  ConcertQuery,
+  ConcertSummary,
   DashboardSnapshot,
+  DateRange,
   MetricSummary,
   TrendPoint,
 } from "@/lib/domain/analytics";
@@ -94,6 +99,24 @@ function bigQueryParameters(params: { clientId: string; startDate: string; endDa
   ];
 }
 
+function concertQueryParameters(params: { clientId: string; startDate: string; endDate: string; patterns: string[] }) {
+  const stringParameter = (name: string, value: string) => ({
+    name,
+    parameterType: { type: "STRING" },
+    parameterValue: { value },
+  });
+  return [
+    stringParameter("clientId", params.clientId),
+    stringParameter("startDate", params.startDate),
+    stringParameter("endDate", params.endDate),
+    {
+      name: "patterns",
+      parameterType: { type: "ARRAY", arrayType: { type: "STRING" } },
+      parameterValue: { arrayValues: params.patterns.map((value) => ({ value })) },
+    },
+  ];
+}
+
 function decodeBigQueryRows<T>(payload: BigQueryResponse): T[] {
   const fields = payload.schema?.fields ?? [];
   return (payload.rows ?? []).map((row) => Object.fromEntries(
@@ -120,7 +143,7 @@ function reportingDate(timeZone: string) {
   }).format(new Date());
 }
 
-function queryWindow(query: AnalyticsQuery, timeZone: string) {
+function queryWindow(query: { range: DateRange; startDate?: string; endDate?: string }, timeZone: string) {
   if (query.range === "custom") {
     if (!query.startDate || !query.endDate) throw new Error("ANALYTICS_DATE_RANGE_INVALID");
     const start = new Date(`${query.startDate}T00:00:00.000Z`);
@@ -234,6 +257,58 @@ function buildInsights(channels: ChannelBreakdown[], campaigns: CampaignPerforma
   return insights;
 }
 
+interface ConcertRow {
+  date: unknown;
+  source: string;
+  campaign_id: string;
+  campaign_name: string;
+  currency_code: string | null;
+  spend: unknown;
+  billed_spend: unknown;
+  impressions: unknown;
+  clicks: unknown;
+  conversions: unknown;
+  revenue: unknown;
+}
+
+interface ConcertTotals {
+  spend: number;
+  billedSpend: number;
+  impressions: number;
+  clicks: number;
+  conversions: number;
+  revenue: number;
+}
+
+// Anchors the stored prefix to the start of campaign_name and requires the
+// next character (if any) to be a word boundary ("_" or end of string), so
+// "BFL_Reykon" matches "BFL_Reykon_Traffic" but not "BFL_Reykon2dafecha"
+// (a different show for the same artist).
+function escapeRegExp(input: string) {
+  return input.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function anchoredPattern(rawPrefix: string) {
+  return `(?i)^${escapeRegExp(rawPrefix.trim())}($|_)`;
+}
+
+function ratiosOf(totals: ConcertTotals) {
+  return {
+    ctr: totals.impressions ? totals.clicks / totals.impressions : 0,
+    cpc: totals.clicks ? totals.spend / totals.clicks : 0,
+    cpa: totals.conversions ? totals.spend / totals.conversions : 0,
+    roas: totals.spend ? totals.revenue / totals.spend : 0,
+  };
+}
+
+function withRatios(totals: ConcertTotals, source: string, campaigns: ConcertCampaignBreakdown[] = []): ConcertPlatformBreakdown {
+  return { source, ...totals, ...ratiosOf(totals), campaigns };
+}
+
+function campaignWithRatios(totals: ConcertTotals, campaignId: string, campaignName: string): ConcertCampaignBreakdown {
+  return { campaignId, campaignName, ...totals, ...ratiosOf(totals) };
+}
+
 export class BigQueryAnalyticsRepository implements AnalyticsRepository {
   private projectId: string;
   private view: string;
@@ -256,7 +331,7 @@ export class BigQueryAnalyticsRepository implements AnalyticsRepository {
     this.defaultCurrency = config.defaultCurrency ?? "COP";
   }
 
-  private async rows<T>(query: string, params: { clientId: string; startDate: string; endDate: string; previousStartDate: string; campaigns: CampaignAnalyticsScope[] }): Promise<T[]> {
+  private async rows<T>(query: string, queryParameters: Array<{ name: string; parameterType: Record<string, unknown>; parameterValue: Record<string, unknown> }>): Promise<T[]> {
     const token = await googleAccessToken("https://www.googleapis.com/auth/bigquery", this.credentialsJson);
     const response = await fetch(`https://bigquery.googleapis.com/bigquery/v2/projects/${encodeURIComponent(this.projectId)}/queries`, {
       method: "POST",
@@ -268,7 +343,7 @@ export class BigQueryAnalyticsRepository implements AnalyticsRepository {
         maxResults: 10_000,
         maximumBytesBilled: this.maximumBytesBilled,
         parameterMode: "NAMED",
-        queryParameters: bigQueryParameters(params),
+        queryParameters,
       }),
     });
     if (!response.ok) throw new Error(`BIGQUERY_QUERY_FAILED_${response.status}: ${await response.text()}`);
@@ -339,7 +414,7 @@ export class BigQueryAnalyticsRepository implements AnalyticsRepository {
           AND campaign_id = allowed.campaignId
       )
     GROUP BY date, source, account_id, campaign_id
-    ORDER BY date`, params);
+    ORDER BY date`, bigQueryParameters(params));
 
     if (!rows.length) throw new Error("ANALYTICS_NO_DATA");
 
@@ -434,6 +509,146 @@ export class BigQueryAnalyticsRepository implements AnalyticsRepository {
       campaigns: campaignRows,
       channelMix,
       insights: buildInsights(channelMix, campaignRows),
+    };
+  }
+
+  async getConcertSummary(query: ConcertQuery, context?: { firestoreToken?: string }): Promise<ConcertSummary> {
+    const { start, end } = queryWindow(query, this.timeZone);
+
+    const scope = await resolveConcertScope(query, context?.firestoreToken);
+    const params = {
+      clientId: scope.clientId,
+      startDate: isoDate(start),
+      endDate: isoDate(end),
+      patterns: scope.namePatterns.map(anchoredPattern),
+    };
+
+    // Grouped by date, source AND campaign: the per-platform breakdown sums
+    // across dates and campaigns, the per-campaign breakdown sums across
+    // dates, the trend sums across sources and campaigns, and the total sums
+    // everything — all derived from this one row set, so they never disagree.
+    const rows = await this.rows<ConcertRow>(`SELECT
+      date,
+      source,
+      campaign_id,
+      ANY_VALUE(campaign_name HAVING MAX last_synced_at) AS campaign_name,
+      ANY_VALUE(currency_code) AS currency_code,
+      SUM(spend) AS spend,
+      SUM(billed_spend) AS billed_spend,
+      SUM(impressions) AS impressions,
+      SUM(clicks) AS clicks,
+      SUM(conversions) AS conversions,
+      SUM(revenue) AS revenue
+    FROM \`${this.view}\`
+    WHERE client_id = @clientId
+      AND date BETWEEN DATE(@startDate) AND DATE(@endDate)
+      AND EXISTS (
+        SELECT 1
+        FROM UNNEST(@patterns) AS pattern
+        WHERE REGEXP_CONTAINS(campaign_name, pattern)
+      )
+    GROUP BY date, source, campaign_id
+    ORDER BY date`, concertQueryParameters(params));
+
+    if (!rows.length) throw new Error("ANALYTICS_NO_DATA");
+
+    const currencies = new Set<string>();
+    const bySource = new Map<string, ConcertTotals>();
+    const byCampaign = new Map<string, ConcertTotals & { source: string; campaignId: string; campaignName: string }>();
+    const byDate = new Map<string, { billedSpend: number; conversions: number }>();
+    const byDateSource = new Map<string, ConcertTotals & { date: string; source: string }>();
+    const combined: ConcertTotals = { spend: 0, billedSpend: 0, impressions: 0, clicks: 0, conversions: 0, revenue: 0 };
+
+    for (const row of rows) {
+      if (row.currency_code) currencies.add(String(row.currency_code));
+      const rowTotals: ConcertTotals = {
+        spend: number(row.spend),
+        billedSpend: number(row.billed_spend),
+        impressions: number(row.impressions),
+        clicks: number(row.clicks),
+        conversions: number(row.conversions),
+        revenue: number(row.revenue),
+      };
+
+      const sourceTotals = bySource.get(row.source) ?? { spend: 0, billedSpend: 0, impressions: 0, clicks: 0, conversions: 0, revenue: 0 };
+      sourceTotals.spend += rowTotals.spend;
+      sourceTotals.billedSpend += rowTotals.billedSpend;
+      sourceTotals.impressions += rowTotals.impressions;
+      sourceTotals.clicks += rowTotals.clicks;
+      sourceTotals.conversions += rowTotals.conversions;
+      sourceTotals.revenue += rowTotals.revenue;
+      bySource.set(row.source, sourceTotals);
+
+      const campaignKey = `${row.source}:${row.campaign_id}`;
+      const campaignTotals = byCampaign.get(campaignKey) ?? {
+        spend: 0, billedSpend: 0, impressions: 0, clicks: 0, conversions: 0, revenue: 0,
+        source: row.source, campaignId: row.campaign_id, campaignName: row.campaign_name,
+      };
+      campaignTotals.spend += rowTotals.spend;
+      campaignTotals.billedSpend += rowTotals.billedSpend;
+      campaignTotals.impressions += rowTotals.impressions;
+      campaignTotals.clicks += rowTotals.clicks;
+      campaignTotals.conversions += rowTotals.conversions;
+      campaignTotals.revenue += rowTotals.revenue;
+      byCampaign.set(campaignKey, campaignTotals);
+
+      const dateKey = text(row.date);
+      const dateTotals = byDate.get(dateKey) ?? { billedSpend: 0, conversions: 0 };
+      dateTotals.billedSpend += rowTotals.billedSpend;
+      dateTotals.conversions += rowTotals.conversions;
+      byDate.set(dateKey, dateTotals);
+
+      const dateSourceKey = `${dateKey}:${row.source}`;
+      const dateSourceTotals = byDateSource.get(dateSourceKey) ?? {
+        spend: 0, billedSpend: 0, impressions: 0, clicks: 0, conversions: 0, revenue: 0,
+        date: dateKey, source: row.source,
+      };
+      dateSourceTotals.spend += rowTotals.spend;
+      dateSourceTotals.billedSpend += rowTotals.billedSpend;
+      dateSourceTotals.impressions += rowTotals.impressions;
+      dateSourceTotals.clicks += rowTotals.clicks;
+      dateSourceTotals.conversions += rowTotals.conversions;
+      dateSourceTotals.revenue += rowTotals.revenue;
+      byDateSource.set(dateSourceKey, dateSourceTotals);
+
+      combined.spend += rowTotals.spend;
+      combined.billedSpend += rowTotals.billedSpend;
+      combined.impressions += rowTotals.impressions;
+      combined.clicks += rowTotals.clicks;
+      combined.conversions += rowTotals.conversions;
+      combined.revenue += rowTotals.revenue;
+    }
+
+    if (currencies.size > 1) throw new Error("ANALYTICS_MIXED_CURRENCIES");
+    const currency = [...currencies][0] ?? process.env.BIGQUERY_DEFAULT_CURRENCY ?? "COP";
+    const campaignsBySource = new Map<string, ConcertCampaignBreakdown[]>();
+    for (const campaign of byCampaign.values()) {
+      const list = campaignsBySource.get(campaign.source) ?? [];
+      list.push(campaignWithRatios(campaign, campaign.campaignId, campaign.campaignName));
+      campaignsBySource.set(campaign.source, list);
+    }
+    const byPlatform = [...bySource.entries()]
+      .map(([source, totals]) => withRatios(
+        totals,
+        source,
+        (campaignsBySource.get(source) ?? []).sort((a, b) => b.billedSpend - a.billedSpend),
+      ))
+      .sort((a, b) => b.billedSpend - a.billedSpend);
+    const trend = [...byDate.entries()]
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+      .map(([date, totals]) => ({ date, billedSpend: totals.billedSpend, conversions: totals.conversions }));
+    const platformTrend = [...byDateSource.values()]
+      .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0))
+      .map((totals) => ({ ...totals, ...ratiosOf(totals) }));
+
+    return {
+      query,
+      currency,
+      trend,
+      platformTrend,
+      updatedAt: new Date().toISOString(),
+      total: withRatios(combined, "total"),
+      byPlatform,
     };
   }
 }

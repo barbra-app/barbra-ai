@@ -4,6 +4,7 @@ import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { onAuthStateChanged, signInWithEmailAndPassword, type User } from "firebase/auth";
 import { ArrowRight, LoaderCircle, LockKeyhole } from "lucide-react";
 import { IntelligenceDashboardSkeleton } from "@/components/dashboard/intelligence-dashboard-skeleton";
+import { ThemeToggle } from "@/components/layout/theme-toggle";
 import { getFirebaseAuth, isFirebaseAuthEnabled } from "@/lib/firebase/client";
 
 type LoginMethod = "email" | null;
@@ -52,6 +53,7 @@ function LoginScreen() {
 
   return (
     <main className="auth-screen">
+      <div className="auth-theme-toggle"><ThemeToggle /></div>
       <section className="auth-card" aria-labelledby="auth-title">
         <img className="auth-logo" src="/barbra-logo.png" width="158" height="25" alt="Barbra" />
         <span className="auth-kicker"><LockKeyhole className="size-3.5" /> Acceso privado</span>
