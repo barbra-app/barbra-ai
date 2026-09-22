@@ -72,6 +72,26 @@ export interface ConcertQuery {
   endDate?: string;
 }
 
+export interface ConcertCreative {
+  adId: string;
+  adName: string;
+  creativeType: string;
+  thumbnailUrl: string;
+  // Where clicking the creative goes: the live Facebook post for meta_ads,
+  // the full-size image for google_ads (no live public page to link to).
+  permalinkUrl?: string;
+  // Per-ad/asset metrics for the query's date range — only available for
+  // meta_ads (Google's Performance Max API doesn't expose real per-asset
+  // impressions/clicks/conversions). Undefined, not 0, when unavailable —
+  // 0 would misleadingly read as "ran but got nothing."
+  impressions?: number;
+  linkClicks?: number;
+  conversions?: number;
+  // billedSpend (real spend * 1.6) / conversions; only set alongside the
+  // metrics above.
+  costPerConversion?: number;
+}
+
 export interface ConcertCampaignBreakdown {
   campaignId: string;
   campaignName: string;
@@ -85,6 +105,8 @@ export interface ConcertCampaignBreakdown {
   cpc: number;
   cpa: number;
   roas: number;
+  // Only populated for sources with creative ingestion
+  creatives: ConcertCreative[];
 }
 
 export interface ConcertPlatformBreakdown {
@@ -192,6 +214,41 @@ export interface AdvisorInsight {
   action: string;
 }
 
+export interface EventPerformance {
+  id: string;
+  displayName: string;
+  artistId: string;
+  artistName: string;
+  photoUrl?: string;
+  artistPhotoUrl?: string;
+  spend: number;
+  billedSpend: number;
+  impressions: number;
+  clicks: number;
+  conversions: number;
+  revenue: number;
+  ctr: number;
+  cpc: number;
+  cpa: number;
+  roas: number;
+}
+
+export interface AdPerformance {
+  adId: string;
+  adName: string;
+  creativeType: string;
+  thumbnailUrl: string;
+  permalinkUrl?: string;
+  source: string;
+  campaignName: string;
+  eventId?: string;
+  eventDisplayName?: string;
+  impressions: number;
+  linkClicks: number;
+  conversions: number;
+  costPerConversion: number;
+}
+
 export interface DashboardSnapshot {
   query: AnalyticsQuery;
   currency: string;
@@ -202,4 +259,9 @@ export interface DashboardSnapshot {
   channelMix: ChannelBreakdown[];
   campaigns: CampaignPerformance[];
   insights: AdvisorInsight[];
+  // Every matched event/ad for the project's date range, unsorted-safe —
+  // the UI sorts and slices to a top 10 by whichever metric is selected.
+  // Empty, not an error, when the project has no events configured yet.
+  topEvents: EventPerformance[];
+  topAds: AdPerformance[];
 }

@@ -1,19 +1,22 @@
 import type { AnalyticsRepository } from "@/lib/data/analytics-repository";
 import { humanizeCampaignName } from "@/lib/campaign-name";
-import { resolveAnalyticsScope, resolveConcertScope, type CampaignAnalyticsScope } from "@/lib/data/analytics-scope";
+import { resolveAnalyticsScope, resolveConcertScope, resolveProjectConcertScope, type CampaignAnalyticsScope, type ProjectEventScope } from "@/lib/data/analytics-scope";
 import { googleAccessToken } from "@/lib/google/access-token";
 import type {
+  AdPerformance,
   AdvisorInsight,
   AnalyticsQuery,
   CampaignPerformance,
   CampaignStatus,
   ChannelBreakdown,
   ConcertCampaignBreakdown,
+  ConcertCreative,
   ConcertPlatformBreakdown,
   ConcertQuery,
   ConcertSummary,
   DashboardSnapshot,
   DateRange,
+  EventPerformance,
   MetricSummary,
   TrendPoint,
 } from "@/lib/domain/analytics";
@@ -271,6 +274,37 @@ interface ConcertRow {
   revenue: unknown;
 }
 
+interface ProjectCampaignRow {
+  source: string;
+  campaign_id: string;
+  campaign_name: string;
+  spend: unknown;
+  billed_spend: unknown;
+  impressions: unknown;
+  clicks: unknown;
+  conversions: unknown;
+  revenue: unknown;
+}
+
+interface ConcertCreativeRow {
+  source: string;
+  campaign_id: string;
+  campaign_name: string;
+  ad_id: string;
+  ad_name: string;
+  creative_type: string;
+  thumbnail_url: string;
+  permalink_url: string | null;
+}
+
+interface AdMetricsRow {
+  ad_id: string;
+  billed_spend: unknown;
+  impressions: unknown;
+  link_clicks: unknown;
+  conversions: unknown;
+}
+
 interface ConcertTotals {
   spend: number;
   billedSpend: number;
@@ -292,6 +326,14 @@ function anchoredPattern(rawPrefix: string) {
   return `(?i)^${escapeRegExp(rawPrefix.trim())}($|_)`;
 }
 
+// Same anchoring as anchoredPattern(), as a plain JS RegExp instead of a
+// BigQuery regex string, used to figure out, in application code, which
+// project-wide concert a campaign_name that already matched the combined
+// BigQuery filter actually belongs to.
+function matchesConcert(campaignName: string, namePattern: string) {
+  return new RegExp(`^${escapeRegExp(namePattern.trim())}($|_)`, "i").test(campaignName);
+}
+
 function ratiosOf(totals: ConcertTotals) {
   return {
     ctr: totals.impressions ? totals.clicks / totals.impressions : 0,
@@ -305,13 +347,15 @@ function withRatios(totals: ConcertTotals, source: string, campaigns: ConcertCam
   return { source, ...totals, ...ratiosOf(totals), campaigns };
 }
 
-function campaignWithRatios(totals: ConcertTotals, campaignId: string, campaignName: string): ConcertCampaignBreakdown {
-  return { campaignId, campaignName, ...totals, ...ratiosOf(totals) };
+function campaignWithRatios(totals: ConcertTotals, campaignId: string, campaignName: string, creatives: ConcertCreative[] = []): ConcertCampaignBreakdown {
+  return { campaignId, campaignName, ...totals, ...ratiosOf(totals), creatives };
 }
 
 export class BigQueryAnalyticsRepository implements AnalyticsRepository {
   private projectId: string;
   private view: string;
+  private creativesView: string;
+  private adDailyView: string;
   private credentialsJson?: string;
   private maximumBytesBilled: string;
   private timeZone: string;
@@ -326,6 +370,8 @@ export class BigQueryAnalyticsRepository implements AnalyticsRepository {
     this.projectId = projectId;
     this.credentialsJson = config.credentialsJson;
     this.view = view;
+    this.creativesView = view.replace(/vw_campaign_daily_performance$/, "vw_campaign_creatives");
+    this.adDailyView = view.replace(/vw_campaign_daily_performance$/, "vw_ad_daily_performance");
     this.maximumBytesBilled = config.maximumBytesBilled ?? "250000000";
     this.timeZone = config.timeZone ?? "America/Bogota";
     this.defaultCurrency = config.defaultCurrency ?? "COP";
@@ -499,6 +545,18 @@ export class BigQueryAnalyticsRepository implements AnalyticsRepository {
       }))
       .sort((a, b) => b.spend - a.spend);
 
+    // Events/ads are supplementary to the core snapshot above — a project
+    // with no concerts configured still returns a usable dashboard, just without these two sections.
+    let topEvents: EventPerformance[] = [];
+    let topAds: AdPerformance[] = [];
+    try {
+      const concerts = await resolveProjectConcertScope({ projectId: query.projectId }, context?.firestoreToken);
+      const eventParams = { clientId: scope.clientId, startDate: params.startDate, endDate: params.endDate, concerts };
+      [topEvents, topAds] = await Promise.all([this.projectEvents(eventParams), this.projectTopAds(eventParams)]);
+    } catch (error) {
+      console.error("[bigquery] project events/ads failed", error);
+    }
+
     return {
       query,
       currency,
@@ -509,7 +567,204 @@ export class BigQueryAnalyticsRepository implements AnalyticsRepository {
       campaigns: campaignRows,
       channelMix,
       insights: buildInsights(channelMix, campaignRows),
+      topEvents,
+      topAds,
     };
+  }
+
+  // Creative previews are supplementary - swallow failures here rather than breaking the whole concert summary
+  private async concertCreatives(params: { clientId: string; startDate: string; endDate: string; patterns: string[] }): Promise<{ byCampaign: Map<string, ConcertCreative[]>; campaignNames: Map<string, string> }> {
+    const result = new Map<string, ConcertCreative[]>();
+    const campaignNames = new Map<string, string>();
+    const empty = { byCampaign: result, campaignNames };
+    const patternFilter = `EXISTS (
+          SELECT 1
+          FROM UNNEST(@patterns) AS pattern
+          WHERE REGEXP_CONTAINS(campaign_name, pattern)
+        )`;
+    const patternParams = [
+      { name: "clientId", parameterType: { type: "STRING" }, parameterValue: { value: params.clientId } },
+      {
+        name: "patterns",
+        parameterType: { type: "ARRAY", arrayType: { type: "STRING" } },
+        parameterValue: { arrayValues: params.patterns.map((value) => ({ value })) },
+      },
+    ];
+
+    let creativeRows: ConcertCreativeRow[] = [];
+    try {
+      creativeRows = await this.rows<ConcertCreativeRow>(`SELECT
+        source,
+        campaign_id,
+        campaign_name,
+        ad_id,
+        ad_name,
+        creative_type,
+        thumbnail_url,
+        permalink_url
+      FROM \`${this.creativesView}\`
+      WHERE client_id = @clientId
+        AND ${patternFilter}`, patternParams);
+    } catch (error) {
+      console.error("[bigquery] concert creatives query failed", error);
+      return empty;
+    }
+    if (!creativeRows.length) return empty;
+
+    // Metrics are for this specific ad within the selected range, not a
+    // lifetime total — same date window as the main campaign query.
+    // billed_spend (not spend) is what cost-per-conversion is based on, same
+    // agency markup used everywhere else in the app.
+    const metricsByAd = new Map<string, { billedSpend: number; impressions: number; linkClicks: number; conversions: number }>();
+    try {
+      const metricsRows = await this.rows<AdMetricsRow>(`SELECT
+        ad_id,
+        SUM(billed_spend) AS billed_spend,
+        SUM(impressions) AS impressions,
+        SUM(link_clicks) AS link_clicks,
+        SUM(conversions) AS conversions
+      FROM \`${this.adDailyView}\`
+      WHERE client_id = @clientId
+        AND date BETWEEN DATE(@startDate) AND DATE(@endDate)
+        AND ${patternFilter}
+      GROUP BY ad_id`, [
+        ...patternParams,
+        { name: "startDate", parameterType: { type: "STRING" }, parameterValue: { value: params.startDate } },
+        { name: "endDate", parameterType: { type: "STRING" }, parameterValue: { value: params.endDate } },
+      ]);
+      for (const row of metricsRows) {
+        metricsByAd.set(row.ad_id, {
+          billedSpend: number(row.billed_spend),
+          impressions: number(row.impressions),
+          linkClicks: number(row.link_clicks),
+          conversions: number(row.conversions),
+        });
+      }
+    } catch (error) {
+      console.error("[bigquery] concert ad metrics query failed", error);
+    }
+
+    for (const row of creativeRows) {
+      const key = `${row.source}:${row.campaign_id}`;
+      const list = result.get(key) ?? [];
+      // Ad-level metrics only exist for meta_ads
+      const metrics = row.source === "meta_ads" ? metricsByAd.get(row.ad_id) : undefined;
+      list.push({
+        adId: row.ad_id,
+        adName: row.ad_name,
+        creativeType: row.creative_type,
+        thumbnailUrl: row.thumbnail_url,
+        permalinkUrl: row.permalink_url ?? undefined,
+        ...(metrics && {
+          impressions: metrics.impressions,
+          linkClicks: metrics.linkClicks,
+          conversions: metrics.conversions,
+          costPerConversion: metrics.conversions ? metrics.billedSpend / metrics.conversions : 0,
+        }),
+      });
+      result.set(key, list);
+      if (row.campaign_name) campaignNames.set(key, row.campaign_name);
+    }
+    return { byCampaign: result, campaignNames };
+  }
+
+  // Aggregates every campaign matching any of the project's concerts into
+  // per-concert totals, in one query — the project-wide equivalent of the
+  // per-campaign breakdown in getConcertSummary.
+  private async projectEvents(params: { clientId: string; startDate: string; endDate: string; concerts: ProjectEventScope[] }): Promise<EventPerformance[]> {
+    if (!params.concerts.length) return [];
+    const patterns = params.concerts.map((concert) => anchoredPattern(concert.namePattern));
+
+    let rows: ProjectCampaignRow[] = [];
+    try {
+      rows = await this.rows<ProjectCampaignRow>(`SELECT
+        source,
+        campaign_id,
+        ANY_VALUE(campaign_name HAVING MAX last_synced_at) AS campaign_name,
+        SUM(spend) AS spend,
+        SUM(billed_spend) AS billed_spend,
+        SUM(impressions) AS impressions,
+        SUM(clicks) AS clicks,
+        SUM(conversions) AS conversions,
+        SUM(revenue) AS revenue
+      FROM \`${this.view}\`
+      WHERE client_id = @clientId
+        AND date BETWEEN DATE(@startDate) AND DATE(@endDate)
+        AND EXISTS (
+          SELECT 1
+          FROM UNNEST(@patterns) AS pattern
+          WHERE REGEXP_CONTAINS(campaign_name, pattern)
+        )
+      GROUP BY source, campaign_id`, concertQueryParameters({ ...params, patterns }));
+    } catch (error) {
+      console.error("[bigquery] project events query failed", error);
+      return [];
+    }
+
+    const totalsByConcert = new Map<string, ConcertTotals>();
+    for (const row of rows) {
+      const campaignName = text(row.campaign_name);
+      const concert = params.concerts.find((item) => matchesConcert(campaignName, item.namePattern));
+      if (!concert) continue;
+      const totals = totalsByConcert.get(concert.id) ?? { spend: 0, billedSpend: 0, impressions: 0, clicks: 0, conversions: 0, revenue: 0 };
+      totals.spend += number(row.spend);
+      totals.billedSpend += number(row.billed_spend);
+      totals.impressions += number(row.impressions);
+      totals.clicks += number(row.clicks);
+      totals.conversions += number(row.conversions);
+      totals.revenue += number(row.revenue);
+      totalsByConcert.set(concert.id, totals);
+    }
+
+    return params.concerts
+      .filter((concert) => totalsByConcert.has(concert.id))
+      .map((concert) => {
+        const totals = totalsByConcert.get(concert.id)!;
+        return {
+          id: concert.id,
+          displayName: concert.displayName,
+          artistId: concert.artistId,
+          artistName: concert.artistName,
+          photoUrl: concert.photoUrl,
+          artistPhotoUrl: concert.artistPhotoUrl,
+          ...totals,
+          ...ratiosOf(totals),
+        };
+      });
+  }
+
+  // Every meta_ads creative (the only source with per-ad metrics) across all
+  // of the project's concerts, labeled with which event it belongs to.
+  private async projectTopAds(params: { clientId: string; startDate: string; endDate: string; concerts: ProjectEventScope[] }): Promise<AdPerformance[]> {
+    if (!params.concerts.length) return [];
+    const patterns = params.concerts.map((concert) => anchoredPattern(concert.namePattern));
+    const { byCampaign, campaignNames } = await this.concertCreatives({ ...params, patterns });
+
+    const ads: AdPerformance[] = [];
+    for (const [key, creatives] of byCampaign) {
+      const source = key.slice(0, key.indexOf(":"));
+      const campaignName = campaignNames.get(key) ?? "";
+      const event = params.concerts.find((concert) => matchesConcert(campaignName, concert.namePattern));
+      for (const creative of creatives) {
+        if (creative.conversions === undefined) continue;
+        ads.push({
+          adId: creative.adId,
+          adName: creative.adName,
+          creativeType: creative.creativeType,
+          thumbnailUrl: creative.thumbnailUrl,
+          permalinkUrl: creative.permalinkUrl,
+          source,
+          campaignName,
+          eventId: event?.id,
+          eventDisplayName: event?.displayName,
+          impressions: creative.impressions ?? 0,
+          linkClicks: creative.linkClicks ?? 0,
+          conversions: creative.conversions,
+          costPerConversion: creative.costPerConversion ?? 0,
+        });
+      }
+    }
+    return ads;
   }
 
   async getConcertSummary(query: ConcertQuery, context?: { firestoreToken?: string }): Promise<ConcertSummary> {
@@ -621,10 +876,12 @@ export class BigQueryAnalyticsRepository implements AnalyticsRepository {
 
     if (currencies.size > 1) throw new Error("ANALYTICS_MIXED_CURRENCIES");
     const currency = [...currencies][0] ?? process.env.BIGQUERY_DEFAULT_CURRENCY ?? "COP";
+    const { byCampaign: creativesByCampaign } = await this.concertCreatives(params);
     const campaignsBySource = new Map<string, ConcertCampaignBreakdown[]>();
     for (const campaign of byCampaign.values()) {
       const list = campaignsBySource.get(campaign.source) ?? [];
-      list.push(campaignWithRatios(campaign, campaign.campaignId, campaign.campaignName));
+      const creativeKey = `${campaign.source}:${campaign.campaignId}`;
+      list.push(campaignWithRatios(campaign, campaign.campaignId, campaign.campaignName, creativesByCampaign.get(creativeKey)));
       campaignsBySource.set(campaign.source, list);
     }
     const byPlatform = [...bySource.entries()]

@@ -106,3 +106,45 @@ export async function resolveConcertScope(query: ConcertQuery, firebaseIdToken?:
   if (!namePatterns.length) throw new Error("ANALYTICS_ARTIST_NOT_CONFIGURED");
   return { clientId, namePatterns };
 }
+
+export interface ProjectEventScope {
+  id: string;
+  artistId: string;
+  displayName: string;
+  namePattern: string;
+  photoUrl?: string;
+  artistName: string;
+  artistPhotoUrl?: string;
+}
+
+/**
+ * Every concert/event configured across the whole project, regardless of
+ * artist, used to rank events and ads for the Dashboard tab. Takes clientId as an argument
+ * (rather than re-resolving it) since callers already have it from resolveAnalyticsScope.
+ */
+export async function resolveProjectConcertScope(query: { projectId: string }, firebaseIdToken?: string): Promise<ProjectEventScope[]> {
+  const [concerts, artists] = await Promise.all([
+    queryFirestoreDocuments("concerts", "projectId", query.projectId, firebaseIdToken),
+    queryFirestoreDocuments("artists", "projectId", query.projectId, firebaseIdToken),
+  ]);
+
+  const artistsById = new Map(artists.map((document) => [document.id, document.data]));
+
+  return concerts
+    .map((document): ProjectEventScope | null => {
+      const namePattern = requiredString(document.data.namePattern);
+      const artistId = requiredString(document.data.artistId);
+      if (!namePattern || !artistId) return null;
+      const artist = artistsById.get(artistId);
+      return {
+        id: document.id,
+        artistId,
+        displayName: requiredString(document.data.displayName) ?? "",
+        namePattern,
+        photoUrl: requiredString(document.data.photoUrl) ?? undefined,
+        artistName: requiredString(artist?.displayName) ?? "",
+        artistPhotoUrl: requiredString(artist?.photoUrl) ?? undefined,
+      };
+    })
+    .filter((scope): scope is ProjectEventScope => scope !== null);
+}

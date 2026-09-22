@@ -6,6 +6,7 @@ import {
   CalendarDays,
   CircleDollarSign,
   Gauge,
+  ImageOff,
   LayoutDashboard,
   Megaphone,
   RefreshCw,
@@ -33,6 +34,7 @@ import { LabeledSelect } from "@/components/dashboard/labeled-select";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
 import { UserProfileMenu } from "@/components/profile/user-profile-menu";
 import {
+  type AdPerformance,
   type AdvisorScope,
   type AppUser,
   type Artist,
@@ -41,6 +43,7 @@ import {
   type DashboardSnapshot,
   type DateRange,
   type DateRangePreset,
+  type EventPerformance,
   type MetricSummary,
   type Organization,
   type Project,
@@ -97,8 +100,6 @@ export function IntelligenceDashboard() {
     [organizationId, workspace],
   );
   const [projectId, setProjectId] = useState("");
-  const availableCampaigns = useMemo(() => workspace?.campaigns.filter((campaign) => campaign.projectId === projectId) ?? [], [projectId, workspace]);
-  const [campaignId, setCampaignId] = useState<string>("all");
   const availableArtists = useMemo(() => workspace?.artists.filter((artist) => artist.projectId === projectId) ?? [], [projectId, workspace]);
   const [artistId, setArtistId] = useState<string>("");
   const artistConcerts = useMemo(() => workspace?.concerts.filter((concert) => concert.artistId === artistId) ?? [], [artistId, workspace]);
@@ -136,7 +137,6 @@ export function IntelligenceDashboard() {
         setWorkspace(data);
         setOrganizationId(nextOrganizationId);
         setProjectId(nextProjectId);
-        setCampaignId("all");
         setWorkspaceError(null);
         setIssue(null);
         setWorkspaceReady(true);
@@ -155,8 +155,6 @@ export function IntelligenceDashboard() {
     if (!availableProjects.some((project) => project.id === projectId)) setProjectId(availableProjects[0]?.id ?? "");
   }, [availableProjects, projectId]);
 
-  useEffect(() => setCampaignId("all"), [projectId]);
-
   useEffect(() => {
     if (!availableArtists.some((artist) => artist.id === artistId)) setArtistId(availableArtists[0]?.id ?? "");
   }, [availableArtists, artistId]);
@@ -167,7 +165,6 @@ export function IntelligenceDashboard() {
     if (!workspaceReady || !organizationId || !projectId) return;
     const controller = new AbortController();
     const params = new URLSearchParams({ organizationId, projectId, range });
-    if (campaignId !== "all") params.set("campaignId", campaignId);
     if (range === "custom") {
       params.set("startDate", customStartDate);
       params.set("endDate", customEndDate);
@@ -205,7 +202,7 @@ export function IntelligenceDashboard() {
       })
       .finally(() => setLoading(false));
     return () => controller.abort();
-  }, [workspaceReady, organizationId, projectId, campaignId, range, customStartDate, customEndDate]);
+  }, [workspaceReady, organizationId, projectId, range, customStartDate, customEndDate]);
 
   function applyCustomRange() {
     if (!draftStartDate || !draftEndDate || draftStartDate > draftEndDate) return;
@@ -216,7 +213,6 @@ export function IntelligenceDashboard() {
   }
 
   const project = availableProjects.find((item) => item.id === projectId);
-  const campaign = availableCampaigns.find((item) => item.id === campaignId);
   const organization = workspace?.organizations.find((item) => item.id === organizationId);
 
   if (!workspaceReady) return <IntelligenceDashboardSkeleton />;
@@ -228,7 +224,6 @@ export function IntelligenceDashboard() {
       ? {
         organizationId,
         projectId,
-        campaignId: campaignId !== "all" ? campaignId : null,
         range,
         startDate: range === "custom" ? customStartDate : undefined,
         endDate: range === "custom" ? customEndDate : undefined,
@@ -284,9 +279,7 @@ export function IntelligenceDashboard() {
         <div className="workspace-selectors">
           <LabeledSelect label="Organización" value={organizationId} onChange={setOrganizationId} options={workspace.organizations.map((item) => ({ value: item.id, label: item.name }))} disabled={workspace.user.role === "user"} />
           <LabeledSelect label="Proyecto" value={projectId} onChange={setProjectId} options={availableProjects.map((item) => ({ value: item.id, label: item.name }))} />
-          {view === "dashboard" ? (
-            <LabeledSelect label="Campaña" value={campaignId} onChange={setCampaignId} options={[{ value: "all", label: "Todas las campañas" }, ...availableCampaigns.map((item) => ({ value: item.id, label: item.name }))]} />
-          ) : (
+          {view === "concerts" && (
             <>
               <LabeledSelect label="Artista" value={artistId} onChange={setArtistId} options={availableArtists.map((item) => ({ value: item.id, label: item.displayName }))} />
               <LabeledSelect
@@ -363,7 +356,7 @@ export function IntelligenceDashboard() {
           <main className="dashboard-main">
             <section className="dashboard-hero">
               <div>
-                <h1>{campaign ? campaign.name : project?.name}</h1>
+                <h1>{project?.name}</h1>
                 <p>
                   {snapshot?.periodLabel
                     ?? (issue?.kind === "empty"
@@ -385,9 +378,7 @@ export function IntelligenceDashboard() {
 
             {issue?.kind === "empty" ? (
               <DashboardEmptyState
-                campaignSelected={Boolean(campaign)}
                 range={range}
-                onShowAllCampaigns={() => setCampaignId("all")}
                 onTryNinetyDays={() => setRange("90d")}
               />
             ) : issue?.kind === "error" ? <DashboardError message={issue.message} /> : !snapshot ? <DashboardSkeleton /> : (
@@ -397,9 +388,13 @@ export function IntelligenceDashboard() {
                     <KpiCard key={metric.id} metric={metric} currency={snapshot.currency} />
                   ))}
                 </section>
-                <section className="analytics-grid">
+                <section className="analytics-grid is-half">
+                  <TopEventsCard events={snapshot.topEvents} currency={snapshot.currency} />
                   <PerformanceChart snapshot={snapshot} />
+                </section>
+                <section className="analytics-grid is-reversed">
                   <ChannelMix snapshot={snapshot} />
+                  <TopAdsCard ads={snapshot.topAds} />
                 </section>
               </div>
             )}
@@ -445,7 +440,7 @@ function KpiCard({ metric, currency }: { metric: MetricSummary; currency: string
 
 function PerformanceChart({ snapshot }: { snapshot: DashboardSnapshot }) {
   return (
-    <article className="chart-card performance-card">
+    <article className="chart-card performance-card is-paired">
       <div className="card-heading">
         <h2>Inversión y retorno</h2>
         <div className="chart-legend"><span><i className="spend" />Inversión</span><span><i className="revenue" />Revenue</span></div>
@@ -483,7 +478,7 @@ function PerformanceTooltip({ active, payload, label, currency }: any) {
 function ChannelMix({ snapshot }: { snapshot: DashboardSnapshot }) {
   const total = snapshot.channelMix.reduce((sum, item) => sum + item.spend, 0);
   return (
-    <article className="chart-card mix-card">
+    <article className="chart-card mix-card is-paired">
       <div className="card-heading"><h2>Canales</h2></div>
       <div className="mix-visual">
         <div className="donut-wrap">
@@ -502,15 +497,95 @@ function ChannelMix({ snapshot }: { snapshot: DashboardSnapshot }) {
   );
 }
 
+const EVENT_METRIC_OPTIONS: { value: keyof Pick<EventPerformance, "conversions" | "spend" | "impressions" | "clicks">; label: string }[] = [
+  { value: "conversions", label: "Conversiones" },
+  { value: "spend", label: "Gasto" },
+  { value: "impressions", label: "Impresiones" },
+  { value: "clicks", label: "Clics" },
+];
+
+const TOP_N = 5;
+
+function TopEventsCard({ events, currency }: { events: EventPerformance[]; currency: string }) {
+  const [metric, setMetric] = useState<typeof EVENT_METRIC_OPTIONS[number]["value"]>("conversions");
+  if (!events.length) return null;
+  const ranked = [...events].sort((a, b) => b[metric] - a[metric]).slice(0, TOP_N);
+
+  return (
+    <article className="chart-card top-events-card is-paired">
+      <div className="card-heading">
+        <h2>Top {TOP_N} eventos</h2>
+        <LabeledSelect label="Métrica" value={metric} onChange={(value) => setMetric(value as typeof metric)} options={EVENT_METRIC_OPTIONS} />
+      </div>
+      <div className="top-events-list">
+        {ranked.map((event, index) => (
+          <div className="top-event-row" key={event.id}>
+            <b>{index + 1}</b>
+            {event.photoUrl || event.artistPhotoUrl
+              ? <img className="top-event-photo" src={event.photoUrl ?? event.artistPhotoUrl} alt="" />
+              : <div className="top-event-photo top-event-photo-placeholder"><ImageOff className="size-4" /></div>}
+            <span className="top-event-info">
+              <span>{event.displayName}</span>
+              <small>{event.artistName}</small>
+            </span>
+            <strong>{metric === "spend" ? formatCurrency(event.spend, currency) : formatNumber(event[metric])}</strong>
+          </div>
+        ))}
+      </div>
+    </article>
+  );
+}
+
+const AD_METRIC_OPTIONS: { value: keyof Pick<AdPerformance, "conversions" | "linkClicks" | "impressions">; label: string }[] = [
+  { value: "conversions", label: "Conversiones" },
+  { value: "linkClicks", label: "Clics en el enlace" },
+  { value: "impressions", label: "Impresiones" },
+];
+
+function TopAdsCard({ ads }: { ads: AdPerformance[] }) {
+  const [metric, setMetric] = useState<typeof AD_METRIC_OPTIONS[number]["value"]>("conversions");
+  if (!ads.length) return null;
+  const ranked = [...ads].sort((a, b) => b[metric] - a[metric]).slice(0, TOP_N);
+
+  return (
+    <article className="chart-card top-ads-card is-paired">
+      <div className="card-heading">
+        <h2>Top {TOP_N} anuncios</h2>
+        <LabeledSelect label="Métrica" value={metric} onChange={(value) => setMetric(value as typeof metric)} options={AD_METRIC_OPTIONS} />
+      </div>
+      <div className="concert-creatives-grid">
+        {ranked.map((ad, index) => (
+          <a
+            className="concert-creative top-ad-creative"
+            key={ad.adId}
+            href={ad.permalinkUrl}
+            target="_blank"
+            rel="noreferrer"
+            title={ad.permalinkUrl ? "Ver arte" : undefined}
+          >
+            <span className="top-ad-rank">{index + 1}</span>
+            <img src={ad.thumbnailUrl} alt={ad.adName} loading="lazy" />
+            <div className="concert-creative-metrics">
+              <span>{formatNumber(ad.impressions)} impr.</span>
+              <span>{formatNumber(ad.linkClicks)} clics enlace</span>
+              <span>{formatNumber(ad.conversions)} conv.</span>
+            </div>
+            <figcaption>
+              <span>{ad.eventDisplayName ?? ad.campaignName}</span>
+              <small>{ad.campaignName}</small>
+            </figcaption>
+          </a>
+        ))}
+      </div>
+    </article>
+  );
+}
+
 function DashboardEmptyState({
-  campaignSelected,
   range,
-  onShowAllCampaigns,
   onTryNinetyDays,
 }: {
-  campaignSelected: boolean;
   range: DateRange;
-  onShowAllCampaigns: () => void;
   onTryNinetyDays: () => void;
 }) {
   const period = range === "custom" ? "en el rango seleccionado" : `en los últimos ${range.replace("d", "")} días`;
@@ -520,12 +595,9 @@ function DashboardEmptyState({
       <Activity className="dashboard-empty-icon" aria-hidden="true" />
       <div className="dashboard-empty-copy">
         <strong>Sin actividad en este periodo</strong>
-        <p>
-          {campaignSelected ? "Esta campaña" : "Esta selección"} no registró métricas {period}.
-        </p>
+        <p>Esta selección no registró métricas {period}.</p>
       </div>
       <div className="dashboard-empty-actions">
-        {campaignSelected && <button className="primary" onClick={onShowAllCampaigns}>Ver todas las campañas</button>}
         {range !== "90d" && <button onClick={onTryNinetyDays}>Probar 90 días</button>}
       </div>
     </section>

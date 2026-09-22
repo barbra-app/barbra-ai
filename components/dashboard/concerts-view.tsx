@@ -262,6 +262,8 @@ export function ConcertsView({
           </article>
 
           <ConcertComparisonChart platformTrend={summary.platformTrend} currency={summary.currency} />
+
+          <ConcertCreativesGallery byPlatform={summary.byPlatform} currency={summary.currency} />
         </div>
       ) : artists.length > 0 ? (
         <div className="dashboard-skeleton">
@@ -319,6 +321,61 @@ function ConcertKpi({ label, value }: { label: string; value: string }) {
         <span>{label}</span>
       </div>
       <strong>{value}</strong>
+    </article>
+  );
+}
+
+function ConcertCreativesGallery({ byPlatform, currency }: { byPlatform: ConcertPlatformBreakdown[]; currency: string }) {
+  const items = byPlatform.flatMap((platform) =>
+    platform.campaigns.flatMap((campaign) =>
+      campaign.creatives.map((creative) => ({
+        key: creative.adId,
+        thumbnailUrl: creative.thumbnailUrl,
+        adName: creative.adName,
+        campaignName: campaign.campaignName,
+        source: platform.source,
+        href: creative.permalinkUrl,
+        impressions: creative.impressions,
+        linkClicks: creative.linkClicks,
+        conversions: creative.conversions,
+        costPerConversion: creative.costPerConversion,
+      })),
+    ),
+  );
+  if (items.length === 0) return null;
+
+  return (
+    <article className="chart-card concert-creatives-card">
+      <div className="card-heading">
+        <h2>Artes de las campañas</h2>
+        <span className="concert-creatives-count">{items.length} activos</span>
+      </div>
+      <div className="concert-creatives-grid">
+        {items.map((item) => (
+          <a
+            className="concert-creative"
+            key={item.key}
+            href={item.href}
+            target="_blank"
+            rel="noreferrer"
+            title={item.href ? "Ver arte" : undefined}
+          >
+            <img src={item.thumbnailUrl} alt={item.adName} loading="lazy" />
+            {item.conversions !== undefined && (
+              <div className="concert-creative-metrics">
+                <span>{formatNumber(item.impressions ?? 0)} impr.</span>
+                <span>{formatNumber(item.linkClicks ?? 0)} clics enlace</span>
+                <span>{formatNumber(item.conversions)} conv.</span>
+                <span>{formatCurrency(item.costPerConversion ?? 0, currency)}/conv.</span>
+              </div>
+            )}
+            <figcaption>
+              <span>{item.campaignName}</span>
+              <small>{sourceLabel(item.source)}</small>
+            </figcaption>
+          </a>
+        ))}
+      </div>
     </article>
   );
 }
