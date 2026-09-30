@@ -1,0 +1,14 @@
+{
+  "scanned_at": "2026-08-19",
+  "source_mtimes": {
+    "package.json": 1787166334,
+    "app/globals.css": 1787173937
+  },
+  "font_stack": "Space Grotesk display + Inter UI via next/font",
+  "palette": "Warm monochrome application chrome with a semantic data-only spectrum",
+  "motion": "motion-cut; no animation library",
+  "spacing": "Existing compact dashboard spacing; Hallmark will formalize a 4px token scale",
+  "framework": "Next.js 16 App Router via vinext/Sites",
+  "preserve": ["Firebase/data behavior", "organization-project-campaign hierarchy", "monochrome Barbra identity", "Space Grotesk + Inter"],
+  "introduce": ["semantic chart colors", "channel distinction", "accessible positive and negative states"]
+}

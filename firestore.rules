@@ -1,0 +1,63 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function userProfile() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function belongsToOrganization(organizationId) {
+      return signedIn() && (isAdmin()
+        || ('organizationId' in userProfile() && userProfile().organizationId == organizationId)
+        || ('organizationIds' in userProfile() && userProfile().organizationIds is list && organizationId in userProfile().organizationIds));
+    }
+
+    function canAccessProject(projectId) {
+      return signedIn() && (isAdmin()
+        || ('projectIds' in userProfile() && userProfile().projectIds is list && projectId in userProfile().projectIds)
+        || ('organizationId' in userProfile() && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == userProfile().organizationId));
+    }
+
+    function isAdmin() {
+      return signedIn() && userProfile().role in ['owner', 'admin'];
+    }
+
+    match /users/{userId} {
+      allow read: if signedIn() && (request.auth.uid == userId || isAdmin());
+      allow write: if isAdmin();
+    }
+
+    match /organizations/{organizationId} {
+      allow read: if belongsToOrganization(organizationId);
+      allow write: if isAdmin() && belongsToOrganization(organizationId);
+    }
+
+    match /projects/{projectId} {
+      allow read: if canAccessProject(projectId);
+      allow write: if isAdmin() && belongsToOrganization(request.resource.data.organizationId);
+    }
+
+    match /campaigns/{campaignId} {
+      allow read: if canAccessProject(resource.data.projectId);
+      allow write: if isAdmin() && canAccessProject(request.resource.data.projectId);
+    }
+
+    match /artists/{artistId} {
+      allow read: if canAccessProject(resource.data.projectId);
+      allow write: if isAdmin() && canAccessProject(request.resource.data.projectId);
+    }
+
+    match /concerts/{concertId} {
+      allow read: if canAccessProject(resource.data.projectId);
+      allow write: if isAdmin() && canAccessProject(request.resource.data.projectId);
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

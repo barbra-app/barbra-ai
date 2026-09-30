@@ -1,9 +1,9 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  reactStrictMode: true,
-  images: {
-    remotePatterns: [{ protocol: "https", hostname: "res.cloudinary.com" }],
+  experimental: {
+    // Allow large server actions for streaming tool outputs
+    serverActions: { bodySizeLimit: "2mb" },
   },
 };
 

@@ -1,143 +1,124 @@
-# Agency Hub
+# Barbra Intelligence
 
-Multi-tool platform for a marketing agency where clients can self-manage and use agency tools. This first version ships:
+Plataforma multi-organización de inteligencia de medios. Combina un dashboard ejecutivo con Barbra Intelligence, una experiencia contextual que consulta datos verificados y devuelve componentes visuales, no solamente texto.
 
-- Email/password authentication with role-based access (`client` / `admin`).
-- A **trackable QR code generator** that builds UTM-tagged URLs and measures scans through a short redirect.
-- Foundations (atomic design, layered services, i18n, RLS) for adding more tools incrementally — including the planned Mastermetrics MCP integration.
+## Qué está listo
 
-## Tech stack
+- Jerarquía de acceso `organización → proyectos → campañas`.
+- Google Sign-In con Firebase Authentication.
+- Perfiles y permisos por proyecto en Firestore, validados también en el servidor.
+- Dashboard responsive con KPIs, tendencia, mix de canales y comparativo de campañas.
+- Barbra Intelligence contextual con respuestas gráficas mediante tool calling.
+- Repositorio de datos intercambiable: `mock` para desarrollo y `bigquery` para producción.
+- Consultas BigQuery parametrizadas, con vista permitida por configuración y límite de bytes procesados.
+- Firebase CLI/MCP configurado a nivel del repositorio.
 
-| Layer | Choice |
-| --- | --- |
-| Framework | Next.js 15 (App Router, TypeScript) |
-| Styling | Tailwind CSS only — every component hand-built |
-| Auth & DB | Supabase (Postgres + Auth + Row Level Security) |
-| Storage | Cloudinary (QR images and any other uploaded assets) |
-| i18n | Lightweight cookie-based, custom (`en`, `es`) — no extra dependency |
-| Package manager | pnpm |
+## Arquitectura
 
-## Project layout
-
-```
-app/                  Next.js routes (thin: compose templates, call services)
-  actions/            Server actions per domain
-  r/[slug]/           Public tracking redirect
-components/           Atomic Design — atoms, molecules, organisms, templates
-services/             Talks to Supabase, Cloudinary, external APIs (no React)
-lib/                  Pure utilities (UTM, slug, QR render, formatters)
-  supabase/           Server, browser and middleware Supabase clients
-hooks/                Client-side React hooks
-i18n/                 Locale config, server reader, client provider, JSON dicts
-types/                DB row + domain types
-supabase/migrations/  SQL migrations (schema + RLS)
-middleware.ts         Session refresh + role-based route gating
+```mermaid
+flowchart LR
+  U[Usuario] --> A[Firebase Auth]
+  A --> N[Next.js / Barbra Intelligence]
+  F[Firestore: accesos y catálogo] --> N
+  N --> API[APIs protegidas]
+  API --> R[Analytics Repository]
+  R --> M[Mock local]
+  R --> B[Mart unificado BigQuery]
+  N --> AI[Barbra Intelligence]
+  AI --> T[Tools analíticas controladas]
+  T --> R
 ```
 
-### Architectural rules
+Firestore guarda identidad, membresías y el mapeo entre el catálogo de Barbra y los identificadores externos. BigQuery es la única fuente de verdad analítica. La aplicación y la IA nunca se conectan directamente con Google Ads, Meta Ads o TikTok Ads, ni reciben permiso para generar SQL libre.
 
-- React components **never** call Supabase or Cloudinary directly. They call a service (server side) or a server action (from client components).
-- `services/*` is server-only (`import "server-only";`). Pure helpers live in `lib/*`.
-- `services/auth.ts` exports `getCurrentUser()` / `requireUser()` / `requireAdmin()` so pages get a typed user without dealing with cookies.
-- All user-facing strings are keyed translations under `i18n/locales/*.json`. No hard-coded copy.
+Durante el demo sin Firestore, Firebase Authentication usa el claim firmado `barbra` como perfil (`role`, `organizationId`, `projectIds`). Cuando Firestore esté disponible, el servidor conserva compatibilidad con documentos `users/{uid}`.
 
-## Running locally
+## Desarrollo local
 
 ```bash
 pnpm install
-cp .env.example .env.local      # then fill in the values below
+cp .env.example .env.local
 pnpm dev
 ```
 
-### Required environment variables
+Sin configuración Firebase ni BigQuery, la aplicación inicia en modo demo. Para datos reales:
 
-| Var | Where it's used | Notes |
-| --- | --- | --- |
-| `NEXT_PUBLIC_APP_URL` | building tracking URLs (e.g. `https://app/r/<slug>`) | use `http://localhost:3000` in dev |
-| `NEXT_PUBLIC_SUPABASE_URL` | Supabase clients (browser, server, middleware) | from Supabase Project Settings → API |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase clients (anon) | same place |
-| `SUPABASE_SERVICE_ROLE_KEY` | redirect endpoint scan inserts | **server-only**, never exposed to the browser |
-| `CLOUDINARY_CLOUD_NAME` / `CLOUDINARY_API_KEY` / `CLOUDINARY_API_SECRET` | QR uploads | server-only |
-| `CLOUDINARY_QR_FOLDER` (optional) | Cloudinary folder for QR uploads | defaults to `qr-codes` |
+1. Completar las variables `NEXT_PUBLIC_FIREBASE_*` de la Web App de Firebase.
+2. Crear los documentos de Firestore descritos abajo.
+3. Autenticar Google Cloud con acceso de lectura al mart de BigQuery.
+4. Establecer `ANALYTICS_PROVIDER=bigquery` y `BIGQUERY_ANALYTICS_VIEW`.
+5. Activar `REQUIRE_FIREBASE_AUTH=true`.
 
-## Database setup
+## Contrato BigQuery
 
-Migrations live in `supabase/migrations/`. Apply them with the Supabase CLI:
+La vista configurada en `BIGQUERY_ANALYTICS_VIEW` debe exponer una fila diaria por cliente, fuente, cuenta y campaña:
+
+| Campo | Tipo |
+| --- | --- |
+| `date` | `DATE` |
+| `client_id`, `source`, `account_id`, `campaign_id` | `STRING` |
+| `campaign_name`, `campaign_status`, `currency_code` | `STRING` |
+| `spend`, `impressions`, `clicks`, `conversions`, `revenue` | `NUMERIC` o compatible |
+| `last_synced_at` | `TIMESTAMP` |
+
+`source` usa valores canónicos como `google_ads`, `meta_ads` y `tiktok_ads`. Conservar este contrato permite agregar fuentes al ELT sin modificar la UI ni Barbra Intelligence. Cada snapshot completo se construye con una única consulta con filtro de fechas y un límite estricto de bytes procesados.
+
+## Modelo Firestore
+
+```text
+users/{uid}
+  name, email
+  role: "admin" | "user"
+  organizationId: string | null // null for global admins
+  projectIds: string[] // optional project-level restriction for users
+
+organizations/{organizationId}
+  name, slug
+  analyticsClientId // corresponde a client_id en BigQuery
+
+projects/{projectId}
+  organizationId, name, clientName, status
+
+campaigns/{campaignId}
+  projectId, name, displayName?, objective, status
+  source             // google_ads | meta_ads | tiktok_ads
+  accountId          // account_id en BigQuery
+  externalCampaignId // campaign_id en BigQuery
+```
+
+`name` conserva el nombre original de la plataforma. `displayName` es opcional y permite definir una etiqueta editorial para la UI; si no existe, la aplicación genera una versión legible sin modificar el identificador ni el nombre fuente.
+
+Un proyecto puede agrupar campañas de múltiples canales. La aplicación traduce el ID interno de cada campaña a la tupla `source + accountId + externalCampaignId` antes de consultar BigQuery. Los documentos incompletos no aparecen en los selectores.
+
+Las reglas en `firestore.rules` aplican el mismo alcance. Las APIs `/api/workspace`, `/api/dashboard` y `/api/chat` vuelven a validar el token y el proyecto en el servidor.
+
+## Firebase MCP
+
+El servidor oficial está configurado en `.codex/config.toml`. Para habilitarlo localmente:
 
 ```bash
-supabase link --project-ref <ref>
-supabase db push
+npx firebase-tools@latest login --reauth
 ```
 
-…or paste the two files manually into the SQL editor in this order:
+Después, abre de nuevo el repositorio en Codex para que cargue el MCP. La configuración limita las herramientas a Authentication y Firestore.
 
-1. `0001_initial_schema.sql` — types, tables, indexes, `handle_new_user` + `updated_at` triggers.
-2. `0002_rls_policies.sql` — RLS policies and the `is_admin()` helper.
+## Variables principales
 
-### Promoting a user to admin
+Consulta `.env.example`. Las importantes son:
 
-Self-serve registration creates a `client`. To promote someone:
+- `ANALYTICS_PROVIDER=mock|bigquery`
+- `GCP_PROJECT_ID`
+- `BIGQUERY_ANALYTICS_VIEW`
+- `BIGQUERY_SERVICE_ACCOUNT_JSON` (cuenta dedicada, solo lectura, para Vercel)
+- `BIGQUERY_MAX_BYTES_BILLED`
+- `NEXT_PUBLIC_FIREBASE_*`
+- `FIREBASE_SERVICE_ACCOUNT_JSON` (solo si el runtime no ofrece credenciales por defecto)
+- `REQUIRE_FIREBASE_AUTH`
+- `ANTHROPIC_API_KEY`
 
-```sql
-update profiles set role = 'admin' where id = '<auth_user_uuid>';
+## Validación
+
+```bash
+pnpm typecheck
+pnpm build:next
 ```
-
-### Tables (summary)
-
-- `profiles (id → auth.users, role user_role, full_name, timestamps)`
-- `qr_codes (id, owner_id → profiles, name, destination_url, utm_*, slug, final_url, image_url, image_public_id, timestamps)`
-- `qr_scans (id, qr_code_id → qr_codes, scanned_at, user_agent, referrer, country)`
-
-RLS: clients can only read/write rows they own. Admins read everything via `is_admin()`. Scan inserts come from the redirect handler using the service role key, so no insert policy is needed on `qr_scans`.
-
-## Feature: trackable QR codes
-
-1. Client opens **Dashboard → New QR code**, fills in name, destination URL, UTM params and optionally a custom slug.
-2. `services/qr-codes.createQrCode`:
-   - validates inputs and reserves a unique slug,
-   - builds the UTM-tagged `final_url`,
-   - renders a QR PNG encoding the **short** tracking URL (so all scans funnel through `/r/<slug>`),
-   - uploads the PNG to Cloudinary,
-   - inserts the row in `qr_codes` (RLS enforces ownership).
-3. Scanning the QR hits `app/r/[slug]/route.ts`, which:
-   - resolves the slug via `services/tracking.resolveSlugToTarget`,
-   - fire-and-forget inserts a `qr_scans` row (never blocks the redirect),
-   - 302s to `final_url`.
-4. The detail page shows total scans, a 14-day chart, the recent-scan table, and copyable short/final URLs.
-
-## Auth flow
-
-- `/login` and `/register` are public; everything else is gated by `middleware.ts`.
-- The middleware refreshes Supabase cookies on every request and redirects:
-  - anonymous users → `/login?next=…`
-  - non-admin users hitting `/admin/*` → `/dashboard`
-- `services/auth.signInWithPassword` wraps Supabase Auth; adding Google later is `supabase.auth.signInWithOAuth({ provider: 'google' })` in the same module — callers don't change.
-
-## i18n
-
-- Translation files: `i18n/locales/{en,es}.json`. Add a locale by adding another JSON file and appending it to `LOCALES` in `i18n/config.ts`.
-- Server components: `const { t } = await getTranslator();`.
-- Client components: wrapped in `<I18nProvider>` at the root layout, then `const { t } = useTranslations();`.
-- The visible **EN/ES** switcher (top right) writes a `locale` cookie and refreshes the route.
-
-## Extending the platform
-
-The folder structure scales by domain. To add a new tool (say "ad-account-audit"):
-
-1. Add SQL: `supabase/migrations/000N_ad_audit.sql` (table + RLS).
-2. Add types: `types/database.ts` and `types/domain.ts`.
-3. Add a service module: `services/ad-audit.ts` (`import "server-only";`).
-4. Add a route: `app/dashboard/ad-audit/...`.
-5. Add organisms/molecules in `components/...`.
-6. Translate copy in `i18n/locales/*.json`.
-
-### Mastermetrics MCP — where it will plug in
-
-The planned integration brings a Mastermetrics MCP server so clients can ask natural-language questions about their campaigns and get generative-UI answers. When that lands:
-
-- The MCP **server** runs out-of-process; this app talks to it over the MCP protocol from a new service module (`services/mastermetrics.ts`).
-- The chat UI lives at `app/dashboard/insights/` and uses streaming server actions to call the service.
-- Server actions stream tool results back, and the UI maps each tool result type to a small React renderer in `components/organisms/insights/*` — that's the "generative UI" surface.
-- Auth and per-client data scoping stay in this app: the service authenticates the user via `getCurrentUser()` and includes the user's account scope in every MCP call.
-
-No code for the MCP integration is included in this initial pass — only the seams (folder shape, services pattern, auth helper) are in place.

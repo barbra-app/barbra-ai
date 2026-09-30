@@ -1,8 +1,6 @@
-import { redirect } from "next/navigation";
+import { IntelligenceDashboard } from "@/components/dashboard/intelligence-dashboard";
+import { AuthGate } from "@/components/auth/auth-gate";
 
-import { getCurrentUser } from "@/services/auth";
-
-export default async function HomePage() {
-  const current = await getCurrentUser();
-  redirect(current ? "/dashboard" : "/login");
+export default function Home() {
+  return <AuthGate><IntelligenceDashboard /></AuthGate>;
 }
