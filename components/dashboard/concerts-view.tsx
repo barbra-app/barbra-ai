@@ -5,13 +5,19 @@ import { ChevronDown, Pencil, Plus } from "lucide-react";
 import {
   Area,
   AreaChart,
+  Bar,
+  BarChart,
   CartesianGrid,
   Cell,
+  LabelList,
+  Layer,
   Line,
   LineChart,
   Pie,
   PieChart,
+  Rectangle,
   ResponsiveContainer,
+  Sankey,
   Tooltip,
   XAxis,
   YAxis,
@@ -19,7 +25,7 @@ import {
 import { AddEventDialog } from "@/components/dashboard/add-event-dialog";
 import { EditEventDialog } from "@/components/dashboard/edit-event-dialog";
 import { LabeledSelect } from "@/components/dashboard/labeled-select";
-import type { Artist, Concert, ConcertMetricKey, ConcertPlatformBreakdown, ConcertPlatformTrendPoint, ConcertSummary, DateRange } from "@/lib/domain/analytics";
+import type { Artist, Concert, ConcertMetricKey, ConcertPlatformBreakdown, ConcertPlatformTrendPoint, ConcertSegmentBreakdown, ConcertSummary, DateRange } from "@/lib/domain/analytics";
 import { getFirebaseIdToken } from "@/lib/firebase/client";
 import { cn, formatCurrency, formatNumber, formatPercent } from "@/lib/utils";
 
@@ -261,6 +267,35 @@ export function ConcertsView({
             </div>
           </article>
 
+          {(summary.deviceBreakdown.length > 0 || summary.geoBreakdown.length > 0) && (
+            <section className="analytics-grid">
+              {summary.deviceBreakdown.length > 0 && (
+                <ConcertSegmentTable title="Dispositivo" rows={summary.deviceBreakdown} currency={summary.currency} />
+              )}
+              {summary.geoBreakdown.length > 0 && (
+                <ConcertSegmentTable title="Región" rows={summary.geoBreakdown} currency={summary.currency} />
+              )}
+            </section>
+          )}
+
+          {(summary.ageBreakdown.length > 0 || summary.genderBreakdown.length > 0) && (
+            <section className="analytics-grid">
+              {summary.ageBreakdown.length > 0 && (
+                <ConcertSegmentTable title="Edad" rows={summary.ageBreakdown} currency={summary.currency} />
+              )}
+              {summary.genderBreakdown.length > 0 && (
+                <ConcertSegmentTable title="Sexo" rows={summary.genderBreakdown} currency={summary.currency} />
+              )}
+            </section>
+          )}
+
+          {summary.publisherPlatformBreakdown.length > 0 && (
+            <section className="analytics-grid">
+              <ConcertSegmentTable title="Plataforma" rows={summary.publisherPlatformBreakdown} currency={summary.currency} />
+              <ConcertPlatformFunnel rows={summary.publisherPlatformBreakdown} />
+            </section>
+          )}
+
           <ConcertComparisonChart platformTrend={summary.platformTrend} currency={summary.currency} />
 
           <ConcertCreativesGallery byPlatform={summary.byPlatform} currency={summary.currency} />
@@ -443,6 +478,177 @@ function ConcertTrendTooltip({ active, payload, label, currency }: { active?: bo
       <div><strong>Gasto</strong><b>{formatCurrency(point.billedSpend, currency)}</b></div>
       <div><strong>Conversiones</strong><b>{formatNumber(point.conversions)}</b></div>
     </div>
+  );
+}
+
+function ConcertSegmentTooltip({ active, payload, currency }: { active?: boolean; payload?: { payload: ConcertSegmentBreakdown }[]; currency: string }) {
+  if (!active || !payload?.length) return null;
+  const row = payload[0].payload;
+  return (
+    <div className="chart-tooltip">
+      <span>{row.label}</span>
+      <div><strong>Gasto</strong><b>{formatCurrency(row.billedSpend, currency)}</b></div>
+      <div><strong>Impresiones</strong><b>{formatNumber(row.impressions)}</b></div>
+      <div><strong>Clics</strong><b>{formatNumber(row.clicks)}</b></div>
+      <div><strong>Conversiones</strong><b>{formatNumber(row.conversions)}</b></div>
+    </div>
+  );
+}
+
+const SEGMENT_CHART_MAX_ROWS = 8;
+
+function ConcertSegmentTable({ title, rows, currency }: { title: string; rows: ConcertSegmentBreakdown[]; currency: string }) {
+  const hasSource = rows.some((row) => row.source);
+  const chartRows = rows
+    .slice(0, SEGMENT_CHART_MAX_ROWS)
+    .map((row) => ({ ...row, label: hasSource ? `${row.label} (${sourceLabel(row.source ?? "")})` : row.label }));
+  const chartHeight = Math.max(chartRows.length * 36, 72);
+  return (
+    <article className="chart-card concert-breakdown-card">
+      <div className="card-heading">
+        <h2>Desglose por {title.toLowerCase()}</h2>
+      </div>
+      <div className="concert-segment-chart" style={{ height: chartHeight }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={chartRows} layout="vertical" margin={{ top: 4, right: 48, bottom: 4, left: 4 }} barCategoryGap="28%">
+            <XAxis type="number" hide />
+            <YAxis
+              type="category"
+              dataKey="label"
+              width={96}
+              tickLine={false}
+              axisLine={false}
+              tick={{ fill: "var(--color-muted)", fontSize: 12 }}
+            />
+            <Tooltip content={<ConcertSegmentTooltip currency={currency} />} cursor={{ fill: "var(--color-surface-muted)" }} />
+            <Bar dataKey="billedSpend" fill="var(--color-accent)" radius={[0, 4, 4, 0]} maxBarSize={18}>
+              <LabelList
+                dataKey="billedSpend"
+                position="right"
+                formatter={(value: number) => formatCurrency(value, currency)}
+                style={{ fill: "var(--color-ink)", fontSize: 12 }}
+              />
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+      <div className="concert-breakdown-table">
+        <div className="concert-breakdown-row concert-breakdown-header">
+          <span>{title}</span>
+          {hasSource && <span>Red</span>}
+          <span>Impresiones</span>
+          <span>Clics</span>
+          <span>Conversiones</span>
+          <span>Gasto</span>
+        </div>
+        {rows.map((row) => (
+          <div className="concert-breakdown-row" key={`${row.source ?? ""}:${row.label}`}>
+            <span>{row.label}</span>
+            {hasSource && <span>{sourceLabel(row.source ?? "")}</span>}
+            <span>{formatNumber(row.impressions)}</span>
+            <span>{formatNumber(row.clicks)}</span>
+            <span>{formatNumber(row.conversions)}</span>
+            <span>{formatCurrency(row.billedSpend, currency)}</span>
+          </div>
+        ))}
+      </div>
+    </article>
+  );
+}
+
+const SANKEY_INTERACTIONS_NODE = "Interacciones";
+const SANKEY_RESULTS_NODE = "Resultados";
+
+// Clics -> conversiones, same two stages the Google Ads Sankey funnel shows,
+// just without a conversion-type split since the mart only has one
+// aggregate conversions figure per row (not per conversion action).
+function platformSankeyData(rows: ConcertSegmentBreakdown[]) {
+  const nodeNames: string[] = [];
+  const nodeIndex = new Map<string, number>();
+  const addNode = (name: string) => {
+    let index = nodeIndex.get(name);
+    if (index === undefined) {
+      index = nodeNames.length;
+      nodeIndex.set(name, index);
+      nodeNames.push(name);
+    }
+    return index;
+  };
+
+  const links: { source: number; target: number; value: number }[] = [];
+  let totalConversions = 0;
+  for (const row of rows) {
+    if (row.clicks <= 0) continue;
+    const label = row.source ? `${row.label} · ${sourceLabel(row.source)}` : row.label;
+    const interactionsIndex = addNode(SANKEY_INTERACTIONS_NODE);
+    links.push({ source: addNode(label), target: interactionsIndex, value: row.clicks });
+    totalConversions += row.conversions;
+  }
+  if (!links.length) return null;
+
+  if (totalConversions > 0) {
+    links.push({
+      source: nodeIndex.get(SANKEY_INTERACTIONS_NODE)!,
+      target: addNode(SANKEY_RESULTS_NODE),
+      value: totalConversions,
+    });
+  }
+
+  return { nodes: nodeNames.map((name) => ({ name })), links };
+}
+
+interface SankeyNodeProps {
+  x?: number;
+  y?: number;
+  width?: number;
+  height?: number;
+  index?: number;
+  payload?: { name: string; value: number };
+  containerWidth?: number;
+}
+
+// recharts calls this directly at render time with the real geometry —
+// see the `node={SankeyFlowNode}` usage below.
+function SankeyFlowNode({ x = 0, y = 0, width = 0, height = 0, index = 0, payload = { name: "", value: 0 }, containerWidth = 0 }: SankeyNodeProps) {
+  const isRightAligned = x + width > containerWidth / 2;
+  return (
+    <Layer key={`sankey-node-${index}`}>
+      <Rectangle x={x} y={y} width={width} height={height} fill={PLATFORM_COLORS[index % PLATFORM_COLORS.length]} fillOpacity={0.9} />
+      <text x={isRightAligned ? x - 6 : x + width + 6} y={y + height / 2} textAnchor={isRightAligned ? "end" : "start"} dominantBaseline="middle" fontSize={11} fill="var(--color-ink)">
+        {payload.name}
+      </text>
+      <text x={isRightAligned ? x - 6 : x + width + 6} y={y + height / 2 + 14} textAnchor={isRightAligned ? "end" : "start"} dominantBaseline="middle" fontSize={10} fill="var(--color-muted)">
+        {formatNumber(payload.value)}
+      </text>
+    </Layer>
+  );
+}
+
+function ConcertPlatformFunnel({ rows }: { rows: ConcertSegmentBreakdown[] }) {
+  const data = useMemo(() => platformSankeyData(rows), [rows]);
+  if (!data) return null;
+  const height = Math.max(data.nodes.length * 42, 220);
+
+  return (
+    <article className="chart-card concert-sankey-card">
+      <div className="card-heading">
+        <h2>Flujo por red</h2>
+      </div>
+      <div className="concert-sankey-chart" style={{ height }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <Sankey
+            data={data}
+            node={SankeyFlowNode}
+            link={{ stroke: "var(--color-border)", strokeOpacity: 0.4 }}
+            nodePadding={20}
+            nodeWidth={10}
+            margin={{ top: 8, right: 140, bottom: 8, left: 100 }}
+          >
+            <Tooltip formatter={(value: number) => formatNumber(value)} />
+          </Sankey>
+        </ResponsiveContainer>
+      </div>
+    </article>
   );
 }
 

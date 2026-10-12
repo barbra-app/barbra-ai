@@ -39,7 +39,7 @@ export interface Concert {
   projectId: string;
   artistId: string;
   displayName: string;
-  namePattern: string;
+  namePatterns: string[];
   photoUrl?: string;
 }
 
@@ -161,6 +161,19 @@ export interface ConcertPlatformTrendPoint {
   roas: number;
 }
 
+export interface ConcertSegmentBreakdown {
+  label: string;
+  // Only set for breakdowns that span more than one ad platform (currently
+  // publisherPlatformBreakdown: Meta's publisher_platform and Google's
+  // ad_network_type use unrelated label sets, so the source disambiguates).
+  source?: string;
+  spend: number;
+  billedSpend: number;
+  impressions: number;
+  clicks: number;
+  conversions: number;
+}
+
 export interface ConcertSummary {
   query: ConcertQuery;
   currency: string;
@@ -169,6 +182,11 @@ export interface ConcertSummary {
   byPlatform: ConcertPlatformBreakdown[];
   trend: ConcertTrendPoint[];
   platformTrend: ConcertPlatformTrendPoint[];
+  deviceBreakdown: ConcertSegmentBreakdown[];
+  geoBreakdown: ConcertSegmentBreakdown[];
+  ageBreakdown: ConcertSegmentBreakdown[];
+  genderBreakdown: ConcertSegmentBreakdown[];
+  publisherPlatformBreakdown: ConcertSegmentBreakdown[];
 }
 
 export interface MetricSummary {
