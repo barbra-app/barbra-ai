@@ -71,12 +71,23 @@ export async function GET(request: Request) {
   }
 }
 
+const NamePatternsSchema = z.array(z.string().trim().min(1).max(200)).min(1).max(20);
+
+function parseNamePatterns(value: FormDataEntryValue | null) {
+  if (typeof value !== "string") return null;
+  try {
+    const parsed = NamePatternsSchema.safeParse(JSON.parse(value));
+    return parsed.success ? parsed.data : null;
+  } catch {
+    return null;
+  }
+}
+
 const CreateConcertSchema = z.object({
   organizationId: z.string().min(1).max(120),
   projectId: z.string().min(1).max(120),
   artistId: z.string().min(1).max(120),
   displayName: z.string().min(1).max(200),
-  namePattern: z.string().min(1).max(200),
 });
 
 export async function POST(request: Request) {
@@ -89,10 +100,10 @@ export async function POST(request: Request) {
     projectId: form.get("projectId"),
     artistId: form.get("artistId"),
     displayName: form.get("displayName"),
-    namePattern: form.get("namePattern"),
   });
-  if (!parsed.success) {
-    return NextResponse.json({ error: "Invalid concert payload", details: parsed.error.flatten() }, { status: 400 });
+  const namePatterns = parseNamePatterns(form.get("namePatterns"));
+  if (!parsed.success || !namePatterns) {
+    return NextResponse.json({ error: "Invalid concert payload", details: parsed.success ? undefined : parsed.error.flatten() }, { status: 400 });
   }
   const photo = form.get("photo");
 
@@ -120,7 +131,7 @@ export async function POST(request: Request) {
       projectId: parsed.data.projectId,
       artistId: parsed.data.artistId,
       displayName: parsed.data.displayName,
-      namePattern: parsed.data.namePattern,
+      namePatterns,
       ...(photoUrl ? { photoUrl } : {}),
     }, firebaseIdToken);
 
@@ -131,7 +142,7 @@ export async function POST(request: Request) {
           projectId: parsed.data.projectId,
           artistId: parsed.data.artistId,
           displayName: parsed.data.displayName,
-          namePattern: parsed.data.namePattern,
+          namePatterns,
           photoUrl,
         },
       },
@@ -161,7 +172,6 @@ const UpdateConcertSchema = z.object({
   projectId: z.string().min(1).max(120),
   artistId: z.string().min(1).max(120),
   displayName: z.string().min(1).max(200),
-  namePattern: z.string().min(1).max(200),
 });
 
 export async function PATCH(request: Request) {
@@ -175,10 +185,10 @@ export async function PATCH(request: Request) {
     projectId: form.get("projectId"),
     artistId: form.get("artistId"),
     displayName: form.get("displayName"),
-    namePattern: form.get("namePattern"),
   });
-  if (!parsed.success) {
-    return NextResponse.json({ error: "Invalid concert payload", details: parsed.error.flatten() }, { status: 400 });
+  const namePatterns = parseNamePatterns(form.get("namePatterns"));
+  if (!parsed.success || !namePatterns) {
+    return NextResponse.json({ error: "Invalid concert payload", details: parsed.success ? undefined : parsed.error.flatten() }, { status: 400 });
   }
   const photo = form.get("photo");
 
@@ -205,7 +215,7 @@ export async function PATCH(request: Request) {
     await updateFirestoreDocument("concerts", parsed.data.id, {
       artistId: parsed.data.artistId,
       displayName: parsed.data.displayName,
-      namePattern: parsed.data.namePattern,
+      namePatterns,
       ...(photoUrl ? { photoUrl } : {}),
     }, firebaseIdToken);
 
@@ -215,7 +225,7 @@ export async function PATCH(request: Request) {
         projectId: parsed.data.projectId,
         artistId: parsed.data.artistId,
         displayName: parsed.data.displayName,
-        namePattern: parsed.data.namePattern,
+        namePatterns,
         photoUrl: photoUrl ?? (existing.data.photoUrl ? String(existing.data.photoUrl) : undefined),
       },
     });

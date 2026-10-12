@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getRequestUser, requestBearerToken } from "@/lib/auth/server-session";
 import { runtimeEnv } from "@/lib/runtime-env";
 import { humanizeCampaignName } from "@/lib/campaign-name";
+import { concertNamePatterns } from "@/lib/data/analytics-scope";
 
 export const dynamic = "force-dynamic";
 
@@ -70,13 +71,14 @@ export async function GET(request: Request) {
         const data = doc.data;
         // Only expose concerts with a usable pattern — an incomplete doc
         // would otherwise resolve to zero campaigns silently.
-        if (!data.artistId || !data.namePattern) return [];
+        const namePatterns = concertNamePatterns(data);
+        if (!data.artistId || !namePatterns.length) return [];
         return [{
           id: doc.id,
           projectId: String(data.projectId),
           artistId: String(data.artistId),
           displayName: String(data.displayName ?? doc.id),
-          namePattern: String(data.namePattern),
+          namePatterns,
           photoUrl: data.photoUrl ? String(data.photoUrl) : undefined,
         }];
       }))

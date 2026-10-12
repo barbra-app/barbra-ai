@@ -16,6 +16,11 @@ function requiredString(value: unknown) {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
+export function concertNamePatterns(data: Record<string, unknown> | undefined): string[] {
+  const raw = Array.isArray(data?.namePatterns) ? data.namePatterns : [data?.namePattern];
+  return raw.map(requiredString).filter((pattern): pattern is string => pattern !== null);
+}
+
 function campaignScope(data: Record<string, unknown> | undefined): CampaignAnalyticsScope | null {
   const source = requiredString(data?.source ?? data?.channel);
   const accountId = requiredString(data?.accountId);
@@ -90,9 +95,9 @@ export async function resolveConcertScope(query: ConcertQuery, firebaseIdToken?:
     if (!concert.exists || requiredString(concert.data.projectId) !== query.projectId || requiredString(concert.data.artistId) !== query.artistId) {
       throw new Error("ANALYTICS_CONCERT_NOT_FOUND");
     }
-    const pattern = requiredString(concert.data.namePattern);
-    if (!pattern) throw new Error("ANALYTICS_CONCERT_NOT_CONFIGURED");
-    return { clientId, namePatterns: [pattern] };
+    const namePatterns = concertNamePatterns(concert.data);
+    if (!namePatterns.length) throw new Error("ANALYTICS_CONCERT_NOT_CONFIGURED");
+    return { clientId, namePatterns };
   }
 
   // Firestore REST queries only filter on one field; narrow by artistId and
@@ -100,8 +105,7 @@ export async function resolveConcertScope(query: ConcertQuery, firebaseIdToken?:
   const concerts = await queryFirestoreDocuments("concerts", "artistId", query.artistId, firebaseIdToken);
   const namePatterns = concerts
     .filter((document) => requiredString(document.data.projectId) === query.projectId)
-    .map((document) => requiredString(document.data.namePattern))
-    .filter((pattern): pattern is string => pattern !== null);
+    .flatMap((document) => concertNamePatterns(document.data));
 
   if (!namePatterns.length) throw new Error("ANALYTICS_ARTIST_NOT_CONFIGURED");
   return { clientId, namePatterns };
@@ -111,7 +115,7 @@ export interface ProjectEventScope {
   id: string;
   artistId: string;
   displayName: string;
-  namePattern: string;
+  namePatterns: string[];
   photoUrl?: string;
   artistName: string;
   artistPhotoUrl?: string;
@@ -132,15 +136,15 @@ export async function resolveProjectConcertScope(query: { projectId: string }, f
 
   return concerts
     .map((document): ProjectEventScope | null => {
-      const namePattern = requiredString(document.data.namePattern);
+      const namePatterns = concertNamePatterns(document.data);
       const artistId = requiredString(document.data.artistId);
-      if (!namePattern || !artistId) return null;
+      if (!namePatterns.length || !artistId) return null;
       const artist = artistsById.get(artistId);
       return {
         id: document.id,
         artistId,
         displayName: requiredString(document.data.displayName) ?? "",
-        namePattern,
+        namePatterns,
         photoUrl: requiredString(document.data.photoUrl) ?? undefined,
         artistName: requiredString(artist?.displayName) ?? "",
         artistPhotoUrl: requiredString(artist?.photoUrl) ?? undefined,

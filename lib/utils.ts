@@ -11,7 +11,7 @@ export function cn(...inputs: ClassValue[]) {
 const LOCALE = "es-CO";
 
 export function formatNumber(n: number, opts?: Intl.NumberFormatOptions) {
-  return new Intl.NumberFormat(LOCALE, opts).format(n);
+  return new Intl.NumberFormat(LOCALE, { maximumFractionDigits: 0, ...opts }).format(n);
 }
 
 export function formatCurrency(n: number, currency = "USD") {

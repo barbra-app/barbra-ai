@@ -3,6 +3,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { X } from "lucide-react";
 import type { Artist, Concert } from "@/lib/domain/analytics";
+import { NamePatternsInput } from "./name-patterns-input";
 import { getFirebaseIdToken } from "@/lib/firebase/client";
 
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
@@ -39,7 +40,7 @@ export function AddEventDialog({
   const [concertArtistId, setConcertArtistId] = useState(selectedArtistId);
   useEffect(() => setConcertArtistId(selectedArtistId), [selectedArtistId]);
   const [concertName, setConcertName] = useState("");
-  const [namePattern, setNamePattern] = useState("");
+  const [namePatterns, setNamePatterns] = useState<string[]>([]);
   const [eventPhoto, setEventPhoto] = useState<File | undefined>();
   const [concertSubmitting, setConcertSubmitting] = useState(false);
   const [concertError, setConcertError] = useState<string | null>(null);
@@ -93,7 +94,7 @@ export function AddEventDialog({
       body.set("projectId", projectId);
       body.set("artistId", concertArtistId);
       body.set("displayName", concertName);
-      body.set("namePattern", namePattern);
+      body.set("namePatterns", JSON.stringify(namePatterns));
       if (eventPhoto) body.set("photo", eventPhoto);
       const response = await fetch("/api/concerts", {
         method: "POST",
@@ -104,7 +105,7 @@ export function AddEventDialog({
       if (!response.ok) throw new Error(payload.error ?? "No fue posible crear el concierto");
       onConcertCreated(payload.data);
       setConcertName("");
-      setNamePattern("");
+      setNamePatterns([]);
       setEventPhoto(undefined);
     } catch (reason) {
       setConcertError(reason instanceof Error ? reason.message : String(reason));
@@ -147,7 +148,7 @@ export function AddEventDialog({
             {artists.map((artist) => <option key={artist.id} value={artist.id}>{artist.displayName}</option>)}
           </select>
           <input value={concertName} onChange={(event) => setConcertName(event.target.value)} placeholder="Ej. Reykon — Bogotá 27 Jul" required />
-          <input value={namePattern} onChange={(event) => setNamePattern(event.target.value)} placeholder="Ej. BFL_Reykon" required />
+          <NamePatternsInput value={namePatterns} onChange={setNamePatterns} />
           <label className="photo-field">
             <span>Foto del evento (opcional)</span>
             <input type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => setEventPhoto(event.target.files?.[0])} />
@@ -155,7 +156,7 @@ export function AddEventDialog({
           <button
             className="auth-submit"
             type="submit"
-            disabled={concertSubmitting || !concertArtistId || !concertName.trim() || !namePattern.trim()}
+            disabled={concertSubmitting || !concertArtistId || !concertName.trim() || !namePatterns.length}
           >
             {concertSubmitting ? "Creando…" : "Crear evento"}
           </button>
