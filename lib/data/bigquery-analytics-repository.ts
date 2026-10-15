@@ -1,5 +1,6 @@
 import type { AnalyticsRepository } from "@/lib/data/analytics-repository";
 import { humanizeCampaignName } from "@/lib/campaign-name";
+import { matchesConcert } from "@/lib/campaign-matching";
 import { resolveAnalyticsScope, resolveConcertScope, resolveProjectConcertScope, type CampaignAnalyticsScope, type ProjectEventScope } from "@/lib/data/analytics-scope";
 import { googleAccessToken } from "@/lib/google/access-token";
 import type {
@@ -13,6 +14,7 @@ import type {
   ConcertCreative,
   ConcertPlatformBreakdown,
   ConcertQuery,
+  ConcertSegmentBreakdown,
   ConcertSummary,
   DashboardSnapshot,
   DateRange,
@@ -102,7 +104,7 @@ function bigQueryParameters(params: { clientId: string; startDate: string; endDa
   ];
 }
 
-function concertQueryParameters(params: { clientId: string; startDate: string; endDate: string; patterns: string[] }) {
+function concertQueryParameters(params: { clientId: string; startDate: string; endDate: string; patterns: string[]; excludedCampaignIds?: string[] }) {
   const stringParameter = (name: string, value: string) => ({
     name,
     parameterType: { type: "STRING" },
@@ -117,8 +119,17 @@ function concertQueryParameters(params: { clientId: string; startDate: string; e
       parameterType: { type: "ARRAY", arrayType: { type: "STRING" } },
       parameterValue: { arrayValues: params.patterns.map((value) => ({ value })) },
     },
+    {
+      name: "excludedCampaignIds",
+      parameterType: { type: "ARRAY", arrayType: { type: "STRING" } },
+      parameterValue: { arrayValues: (params.excludedCampaignIds ?? []).map((value) => ({ value })) },
+    },
   ];
 }
+
+// Matches CONCAT(source, ':', campaign_id) used in the WHERE clauses below —
+// see Concert.excludedCampaignIds for why a campaign needs excluding here.
+const EXCLUDE_CAMPAIGN_CLAUSE = "AND CONCAT(source, ':', campaign_id) NOT IN UNNEST(@excludedCampaignIds)";
 
 function decodeBigQueryRows<T>(payload: BigQueryResponse): T[] {
   const fields = payload.schema?.fields ?? [];
@@ -323,16 +334,12 @@ function escapeRegExp(input: string) {
 }
 
 function anchoredPattern(rawPrefix: string) {
-  return `(?i)^${escapeRegExp(rawPrefix.trim())}($|_)`;
+  return `(?i)^${escapeRegExp(rawPrefix.trim())}($|[_ ])`;
 }
 
-// Same anchoring as anchoredPattern(), as a plain JS RegExp instead of a
-// BigQuery regex string, used to figure out, in application code, which
-// project-wide concert a campaign_name that already matched the combined
-// BigQuery filter actually belongs to.
-function matchesConcert(campaignName: string, namePattern: string) {
-  return new RegExp(`^${escapeRegExp(namePattern.trim())}($|_)`, "i").test(campaignName);
-}
+// matchesConcert() (same anchoring, as a plain JS RegExp instead of a
+// BigQuery regex string) is imported from @/lib/campaign-matching, shared
+// with the client-side campaign status dots in the event selector.
 
 function ratiosOf(totals: ConcertTotals) {
   return {
@@ -356,6 +363,10 @@ export class BigQueryAnalyticsRepository implements AnalyticsRepository {
   private view: string;
   private creativesView: string;
   private adDailyView: string;
+  private deviceView: string;
+  private geoView: string;
+  private demographicsView: string;
+  private platformView: string;
   private credentialsJson?: string;
   private maximumBytesBilled: string;
   private timeZone: string;
@@ -372,6 +383,10 @@ export class BigQueryAnalyticsRepository implements AnalyticsRepository {
     this.view = view;
     this.creativesView = view.replace(/vw_campaign_daily_performance$/, "vw_campaign_creatives");
     this.adDailyView = view.replace(/vw_campaign_daily_performance$/, "vw_ad_daily_performance");
+    this.deviceView = view.replace(/vw_campaign_daily_performance$/, "vw_device_daily_performance");
+    this.geoView = view.replace(/vw_campaign_daily_performance$/, "vw_geo_daily_performance");
+    this.demographicsView = view.replace(/vw_campaign_daily_performance$/, "vw_demographics_daily_performance");
+    this.platformView = view.replace(/vw_campaign_daily_performance$/, "vw_platform_daily_performance");
     this.maximumBytesBilled = config.maximumBytesBilled ?? "250000000";
     this.timeZone = config.timeZone ?? "America/Bogota";
     this.defaultCurrency = config.defaultCurrency ?? "COP";
@@ -549,16 +564,12 @@ export class BigQueryAnalyticsRepository implements AnalyticsRepository {
     // with no concerts configured still returns a usable dashboard, just without these two sections.
     let topEvents: EventPerformance[] = [];
     let topAds: AdPerformance[] = [];
-    // Rankings are project-wide. Keep them out of a campaign-filtered
-    // snapshot so every card in the dashboard represents the same scope.
-    if (!query.campaignId) {
-      try {
-        const concerts = await resolveProjectConcertScope({ projectId: query.projectId }, context?.firestoreToken);
-        const eventParams = { clientId: scope.clientId, startDate: params.startDate, endDate: params.endDate, concerts };
-        [topEvents, topAds] = await Promise.all([this.projectEvents(eventParams), this.projectTopAds(eventParams)]);
-      } catch (error) {
-        console.error("[bigquery] project events/ads failed", error);
-      }
+    try {
+      const concerts = await resolveProjectConcertScope({ projectId: query.projectId }, context?.firestoreToken);
+      const eventParams = { clientId: scope.clientId, startDate: params.startDate, endDate: params.endDate, concerts };
+      [topEvents, topAds] = await Promise.all([this.projectEvents(eventParams), this.projectTopAds(eventParams)]);
+    } catch (error) {
+      console.error("[bigquery] project events/ads failed", error);
     }
 
     return {
@@ -574,6 +585,56 @@ export class BigQueryAnalyticsRepository implements AnalyticsRepository {
       topEvents,
       topAds,
     };
+  }
+
+  // Device/geo breakdowns are supplementary - swallow failures here rather than breaking the whole concert summary.
+  // Not every source reports a breakdown (Pinterest has none), so this only reflects the sources that do.
+  // The platform breakdown spans more than one ad platform (Meta's
+  // publisher_platform, Google's ad_network_type), each with its own label
+  // vocabulary, so it's grouped and returned per-source too — the others are
+  // single-source and don't need it.
+  private async concertSegmentBreakdown(
+    view: string,
+    segmentColumn: "device" | "geo" | "age" | "gender" | "platform",
+    params: { clientId: string; startDate: string; endDate: string; patterns: string[]; excludedCampaignIds?: string[] },
+  ): Promise<ConcertSegmentBreakdown[]> {
+    const includeSource = segmentColumn === "platform";
+    let rows: Array<{ label: string; source?: unknown; spend: unknown; billed_spend: unknown; impressions: unknown; clicks: unknown; conversions: unknown }> = [];
+    try {
+      rows = await this.rows(`SELECT
+        ${segmentColumn} AS label,
+        ${includeSource ? "source," : ""}
+        SUM(spend) AS spend,
+        SUM(billed_spend) AS billed_spend,
+        SUM(impressions) AS impressions,
+        SUM(clicks) AS clicks,
+        SUM(conversions) AS conversions
+      FROM \`${view}\`
+      WHERE client_id = @clientId
+        AND date BETWEEN DATE(@startDate) AND DATE(@endDate)
+        AND ${segmentColumn} IS NOT NULL
+        AND EXISTS (
+          SELECT 1
+          FROM UNNEST(@patterns) AS pattern
+          WHERE REGEXP_CONTAINS(campaign_name, pattern)
+        )
+        ${EXCLUDE_CAMPAIGN_CLAUSE}
+      GROUP BY ${segmentColumn}${includeSource ? ", source" : ""}
+      ORDER BY billed_spend DESC`, concertQueryParameters(params));
+    } catch (error) {
+      console.error(`[bigquery] concert ${segmentColumn} breakdown query failed`, error);
+      return [];
+    }
+
+    return rows.map((row) => ({
+      label: text(row.label) ?? "",
+      ...(includeSource && { source: text(row.source) }),
+      spend: number(row.spend),
+      billedSpend: number(row.billed_spend),
+      impressions: number(row.impressions),
+      clicks: number(row.clicks),
+      conversions: number(row.conversions),
+    }));
   }
 
   // Creative previews are supplementary - swallow failures here rather than breaking the whole concert summary
@@ -608,6 +669,7 @@ export class BigQueryAnalyticsRepository implements AnalyticsRepository {
         permalink_url
       FROM \`${this.creativesView}\`
       WHERE client_id = @clientId
+        AND source != 'google_ads'
         AND ${patternFilter}`, patternParams);
     } catch (error) {
       console.error("[bigquery] concert creatives query failed", error);
@@ -651,8 +713,8 @@ export class BigQueryAnalyticsRepository implements AnalyticsRepository {
     for (const row of creativeRows) {
       const key = `${row.source}:${row.campaign_id}`;
       const list = result.get(key) ?? [];
-      // Ad-level metrics only exist for meta_ads
-      const metrics = row.source === "meta_ads" ? metricsByAd.get(row.ad_id) : undefined;
+      // Ad-level metrics exist for meta_ads, tiktok_ads and pinterest_ads
+      const metrics = metricsByAd.get(row.ad_id);
       list.push({
         adId: row.ad_id,
         adName: row.ad_name,
@@ -677,7 +739,7 @@ export class BigQueryAnalyticsRepository implements AnalyticsRepository {
   // per-campaign breakdown in getConcertSummary.
   private async projectEvents(params: { clientId: string; startDate: string; endDate: string; concerts: ProjectEventScope[] }): Promise<EventPerformance[]> {
     if (!params.concerts.length) return [];
-    const patterns = params.concerts.map((concert) => anchoredPattern(concert.namePattern));
+    const patterns = params.concerts.flatMap((concert) => concert.namePatterns.map(anchoredPattern));
 
     let rows: ProjectCampaignRow[] = [];
     try {
@@ -708,7 +770,10 @@ export class BigQueryAnalyticsRepository implements AnalyticsRepository {
     const totalsByConcert = new Map<string, ConcertTotals>();
     for (const row of rows) {
       const campaignName = text(row.campaign_name);
-      const concert = params.concerts.find((item) => matchesConcert(campaignName, item.namePattern));
+      const campaignKey = `${row.source}:${row.campaign_id}`;
+      const concert = params.concerts.find(
+        (item) => matchesConcert(campaignName, item.namePatterns) && !item.excludedCampaignIds.includes(campaignKey),
+      );
       if (!concert) continue;
       const totals = totalsByConcert.get(concert.id) ?? { spend: 0, billedSpend: 0, impressions: 0, clicks: 0, conversions: 0, revenue: 0 };
       totals.spend += number(row.spend);
@@ -737,18 +802,18 @@ export class BigQueryAnalyticsRepository implements AnalyticsRepository {
       });
   }
 
-  // Every meta_ads creative (the only source with per-ad metrics) across all
+  // Every creative with per-ad metrics (meta_ads, tiktok_ads and pinterest_ads) across all
   // of the project's concerts, labeled with which event it belongs to.
   private async projectTopAds(params: { clientId: string; startDate: string; endDate: string; concerts: ProjectEventScope[] }): Promise<AdPerformance[]> {
     if (!params.concerts.length) return [];
-    const patterns = params.concerts.map((concert) => anchoredPattern(concert.namePattern));
+    const patterns = params.concerts.flatMap((concert) => concert.namePatterns.map(anchoredPattern));
     const { byCampaign, campaignNames } = await this.concertCreatives({ ...params, patterns });
 
     const ads: AdPerformance[] = [];
     for (const [key, creatives] of byCampaign) {
       const source = key.slice(0, key.indexOf(":"));
       const campaignName = campaignNames.get(key) ?? "";
-      const event = params.concerts.find((concert) => matchesConcert(campaignName, concert.namePattern));
+      const event = params.concerts.find((concert) => matchesConcert(campaignName, concert.namePatterns));
       for (const creative of creatives) {
         if (creative.conversions === undefined) continue;
         ads.push({
@@ -780,6 +845,7 @@ export class BigQueryAnalyticsRepository implements AnalyticsRepository {
       startDate: isoDate(start),
       endDate: isoDate(end),
       patterns: scope.namePatterns.map(anchoredPattern),
+      excludedCampaignIds: scope.excludedCampaignIds,
     };
 
     // Grouped by date, source AND campaign: the per-platform breakdown sums
@@ -806,6 +872,7 @@ export class BigQueryAnalyticsRepository implements AnalyticsRepository {
         FROM UNNEST(@patterns) AS pattern
         WHERE REGEXP_CONTAINS(campaign_name, pattern)
       )
+      ${EXCLUDE_CAMPAIGN_CLAUSE}
     GROUP BY date, source, campaign_id
     ORDER BY date`, concertQueryParameters(params));
 
@@ -881,6 +948,13 @@ export class BigQueryAnalyticsRepository implements AnalyticsRepository {
     if (currencies.size > 1) throw new Error("ANALYTICS_MIXED_CURRENCIES");
     const currency = [...currencies][0] ?? process.env.BIGQUERY_DEFAULT_CURRENCY ?? "COP";
     const { byCampaign: creativesByCampaign } = await this.concertCreatives(params);
+    const [deviceBreakdown, geoBreakdown, ageBreakdown, genderBreakdown, publisherPlatformBreakdown] = await Promise.all([
+      this.concertSegmentBreakdown(this.deviceView, "device", params),
+      this.concertSegmentBreakdown(this.geoView, "geo", params),
+      this.concertSegmentBreakdown(this.demographicsView, "age", params),
+      this.concertSegmentBreakdown(this.demographicsView, "gender", params),
+      this.concertSegmentBreakdown(this.platformView, "platform", params),
+    ]);
     const campaignsBySource = new Map<string, ConcertCampaignBreakdown[]>();
     for (const campaign of byCampaign.values()) {
       const list = campaignsBySource.get(campaign.source) ?? [];
@@ -910,6 +984,11 @@ export class BigQueryAnalyticsRepository implements AnalyticsRepository {
       updatedAt: new Date().toISOString(),
       total: withRatios(combined, "total"),
       byPlatform,
+      deviceBreakdown,
+      geoBreakdown,
+      ageBreakdown,
+      genderBreakdown,
+      publisherPlatformBreakdown,
     };
   }
 }

@@ -2,8 +2,24 @@ import { NextResponse } from "next/server";
 import { getRequestUser, requestBearerToken } from "@/lib/auth/server-session";
 import { runtimeEnv } from "@/lib/runtime-env";
 import { humanizeCampaignName } from "@/lib/campaign-name";
+import { concertExcludedCampaignIds, concertNamePatterns } from "@/lib/data/analytics-scope";
+import type { ConcertEvidencePhoto } from "@/lib/domain/analytics";
 
 export const dynamic = "force-dynamic";
+
+function evidencePhotos(value: unknown): ConcertEvidencePhoto[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    if (!item || typeof item !== "object") return [];
+    const { url, caption, uploadedAt } = item as Record<string, unknown>;
+    if (typeof url !== "string" || !url) return [];
+    return [{
+      url,
+      caption: typeof caption === "string" ? caption : "",
+      uploadedAt: typeof uploadedAt === "string" ? uploadedAt : "",
+    }];
+  });
+}
 
 export async function GET(request: Request) {
   try {
@@ -53,6 +69,7 @@ export async function GET(request: Request) {
         name: String(data.displayName ?? humanizeCampaignName(sourceName)),
         sourceName,
         channel: String(data.source),
+        externalCampaignId: String(data.externalCampaignId),
         objective: String(data.objective ?? "Performance"),
         status: (["active", "paused", "completed"].includes(String(data.status)) ? String(data.status) : "active") as "active" | "paused" | "completed",
       }];
@@ -70,14 +87,18 @@ export async function GET(request: Request) {
         const data = doc.data;
         // Only expose concerts with a usable pattern — an incomplete doc
         // would otherwise resolve to zero campaigns silently.
-        if (!data.artistId || !data.namePattern) return [];
+        const namePatterns = concertNamePatterns(data);
+        if (!data.artistId || !namePatterns.length) return [];
         return [{
           id: doc.id,
           projectId: String(data.projectId),
           artistId: String(data.artistId),
           displayName: String(data.displayName ?? doc.id),
-          namePattern: String(data.namePattern),
+          namePatterns,
           photoUrl: data.photoUrl ? String(data.photoUrl) : undefined,
+          eventDate: typeof data.eventDate === "string" ? data.eventDate : undefined,
+          excludedCampaignIds: concertExcludedCampaignIds(data),
+          evidencePhotos: evidencePhotos(data.evidencePhotos),
         }];
       }))
       .sort((a, b) => a.displayName.localeCompare(b.displayName, "es"));

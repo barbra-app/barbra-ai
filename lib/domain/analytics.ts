@@ -23,6 +23,9 @@ export interface Campaign {
   name: string;
   sourceName?: string;
   channel: string;
+  // The ad-platform's own campaign id — pairs with `channel` to form the
+  // "source:campaignId" keys used by Concert.excludedCampaignIds.
+  externalCampaignId: string;
   objective: string;
   status: CampaignStatus;
 }
@@ -34,13 +37,28 @@ export interface Artist {
   photoUrl?: string;
 }
 
+export interface ConcertEvidencePhoto {
+  url: string;
+  caption: string;
+  uploadedAt: string;
+}
+
 export interface Concert {
   id: string;
   projectId: string;
   artistId: string;
   displayName: string;
-  namePattern: string;
+  namePatterns: string[];
   photoUrl?: string;
+  // ISO date (YYYY-MM-DD) of the event itself — once past, the event is
+  // considered finished regardless of campaign status.
+  eventDate?: string;
+  // "source:campaignId" keys to exclude from this concert's analytics, for
+  // campaigns that were renamed/repurposed on the ad platform (same
+  // campaign_id, different campaign_name over time) and now wrongly match
+  // this concert's namePatterns on their old historical rows.
+  excludedCampaignIds?: string[];
+  evidencePhotos?: ConcertEvidencePhoto[];
 }
 
 export interface AppUser {
@@ -161,6 +179,19 @@ export interface ConcertPlatformTrendPoint {
   roas: number;
 }
 
+export interface ConcertSegmentBreakdown {
+  label: string;
+  // Only set for breakdowns that span more than one ad platform (currently
+  // publisherPlatformBreakdown: Meta's publisher_platform and Google's
+  // ad_network_type use unrelated label sets, so the source disambiguates).
+  source?: string;
+  spend: number;
+  billedSpend: number;
+  impressions: number;
+  clicks: number;
+  conversions: number;
+}
+
 export interface ConcertSummary {
   query: ConcertQuery;
   currency: string;
@@ -169,6 +200,11 @@ export interface ConcertSummary {
   byPlatform: ConcertPlatformBreakdown[];
   trend: ConcertTrendPoint[];
   platformTrend: ConcertPlatformTrendPoint[];
+  deviceBreakdown: ConcertSegmentBreakdown[];
+  geoBreakdown: ConcertSegmentBreakdown[];
+  ageBreakdown: ConcertSegmentBreakdown[];
+  genderBreakdown: ConcertSegmentBreakdown[];
+  publisherPlatformBreakdown: ConcertSegmentBreakdown[];
 }
 
 export interface MetricSummary {
