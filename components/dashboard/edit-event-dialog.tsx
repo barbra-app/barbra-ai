@@ -4,6 +4,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { X } from "lucide-react";
 import type { Artist, Concert } from "@/lib/domain/analytics";
 import { getFirebaseIdToken } from "@/lib/firebase/client";
+import { AvatarPhotoField } from "./avatar-photo-field";
 import { NamePatternsInput } from "./name-patterns-input";
 
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
@@ -38,6 +39,7 @@ export function EditEventDialog({
   const [artistError, setArtistError] = useState<string | null>(null);
 
   const [concertName, setConcertName] = useState(concert?.displayName ?? "");
+  const [eventDate, setEventDate] = useState(concert?.eventDate ?? "");
   const [namePatterns, setNamePatterns] = useState<string[]>(concert?.namePatterns ?? []);
   const [eventPhoto, setEventPhoto] = useState<File | undefined>();
   const [concertSubmitting, setConcertSubmitting] = useState(false);
@@ -52,10 +54,11 @@ export function EditEventDialog({
   }, [artist?.id, artist?.displayName]);
   useEffect(() => {
     setConcertName(concert?.displayName ?? "");
+    setEventDate(concert?.eventDate ?? "");
     setNamePatterns(concert?.namePatterns ?? []);
     setEventPhoto(undefined);
     setConcertError(null);
-  }, [concert?.id, concert?.displayName, concert?.namePatterns]);
+  }, [concert?.id, concert?.displayName, concert?.eventDate, concert?.namePatterns]);
 
   async function submitArtist(event: FormEvent) {
     event.preventDefault();
@@ -110,6 +113,7 @@ export function EditEventDialog({
       body.set("artistId", concert.artistId);
       body.set("displayName", concertName);
       body.set("namePatterns", JSON.stringify(namePatterns));
+      if (eventDate) body.set("eventDate", eventDate);
       if (eventPhoto) body.set("photo", eventPhoto);
       const response = await fetch("/api/concerts", {
         method: "PATCH",
@@ -145,12 +149,10 @@ export function EditEventDialog({
       <div className="concert-admin-forms">
         <form className="auth-field" onSubmit={submitArtist}>
           <span>Artista</span>
-          <input value={artistName} onChange={(event) => setArtistName(event.target.value)} placeholder="Ej. Reykon" required />
-          <label className="photo-field">
-            <span>Foto del artista</span>
-            {artist.photoUrl && <img className="photo-preview" src={artist.photoUrl} alt="" />}
-            <input type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => setArtistPhoto(event.target.files?.[0])} />
-          </label>
+          <div className="identity-row">
+            <AvatarPhotoField label="Foto del artista" currentUrl={artist.photoUrl} onFileChange={setArtistPhoto} />
+            <input value={artistName} onChange={(event) => setArtistName(event.target.value)} placeholder="Ej. Reykon" required />
+          </div>
           <button className="auth-submit" type="submit" disabled={artistSubmitting || !artistName.trim()}>
             {artistSubmitting ? "Guardando…" : "Guardar artista"}
           </button>
@@ -160,15 +162,20 @@ export function EditEventDialog({
         {concert && (
           <form className="auth-field" onSubmit={submitConcert}>
             <span>Evento</span>
-            <input value={concertName} onChange={(event) => setConcertName(event.target.value)} placeholder="Ej. Reykon — Bogotá 27 Jul" required />
-            <NamePatternsInput value={namePatterns} onChange={setNamePatterns} />
-            <label className="photo-field">
-              <span>Foto del evento</span>
-              {concert.photoUrl && <img className="photo-preview" src={concert.photoUrl} alt="" />}
-              <input type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => setEventPhoto(event.target.files?.[0])} />
+            <div className="identity-row">
+              <AvatarPhotoField label="Foto del evento" currentUrl={concert.photoUrl} onFileChange={setEventPhoto} />
+              <input value={concertName} onChange={(event) => setConcertName(event.target.value)} placeholder="Ej. Reykon — Bogotá 27 Jul" required />
+            </div>
+            <label className="auth-field">
+              <span>Fecha del evento (opcional)</span>
+              <input type="date" value={eventDate} onChange={(event) => setEventDate(event.target.value)} />
+            </label>
+            <label className="auth-field">
+              <span>Patrones de nombre de campaña</span>
+              <NamePatternsInput value={namePatterns} onChange={setNamePatterns} />
             </label>
             <button
-              className="auth-submit"
+              className="auth-submit event-form-submit"
               type="submit"
               disabled={concertSubmitting || !concertName.trim() || !namePatterns.length}
             >

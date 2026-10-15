@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Activity,
   CalendarDays,
@@ -9,6 +9,7 @@ import {
   ImageOff,
   LayoutDashboard,
   Megaphone,
+  Plus,
   RefreshCw,
   Sparkles,
   Target,
@@ -27,7 +28,9 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import { matchesConcert } from "@/lib/campaign-matching";
 import { AdvisorPanel } from "@/components/advisor/advisor-panel";
+import { AddEventDialog } from "@/components/dashboard/add-event-dialog";
 import { ConcertsView } from "@/components/dashboard/concerts-view";
 import { DashboardSkeleton, IntelligenceDashboardSkeleton } from "@/components/dashboard/intelligence-dashboard-skeleton";
 import { LabeledSelect } from "@/components/dashboard/labeled-select";
@@ -106,6 +109,30 @@ export function IntelligenceDashboard() {
   const [concertId, setConcertId] = useState<string>("all");
   const [range, setRange] = useState<DateRange>("30d");
   const today = useMemo(todayInBogota, []);
+  // Dot next to each event in the selector: gray once the event date has
+  // passed (regardless of campaign status), else green if any matched
+  // campaign is still active, else red if every matched campaign is
+  // paused/completed. No dot when nothing can be determined (no event date
+  // and no matching campaigns).
+  const concertStatusDots = useMemo(() => {
+    const projectCampaigns = workspace?.campaigns.filter((campaign) => campaign.projectId === projectId) ?? [];
+    const dots = new Map<string, "green" | "red" | "gray">();
+    for (const concert of artistConcerts) {
+      if (concert.eventDate && concert.eventDate < today) {
+        dots.set(concert.id, "gray");
+        continue;
+      }
+      const matched = projectCampaigns.filter(
+        (campaign) =>
+          matchesConcert(campaign.sourceName ?? campaign.name, concert.namePatterns) &&
+          !concert.excludedCampaignIds?.includes(`${campaign.channel}:${campaign.externalCampaignId}`),
+      );
+      if (!matched.length) continue;
+      dots.set(concert.id, matched.some((campaign) => campaign.status === "active") ? "green" : "red");
+    }
+    return dots;
+  }, [artistConcerts, projectId, today, workspace]);
+  const addEventDialogRef = useRef<HTMLDialogElement>(null);
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [customStartDate, setCustomStartDate] = useState(() => daysBefore(todayInBogota(), 89));
   const [customEndDate, setCustomEndDate] = useState(today);
@@ -288,39 +315,50 @@ export function IntelligenceDashboard() {
                 onChange={setConcertId}
                 options={[
                   { value: "all", label: `Resumen (${artistConcerts.length} fecha${artistConcerts.length === 1 ? "" : "s"})` },
-                  ...artistConcerts.map((item) => ({ value: item.id, label: item.displayName })),
+                  ...artistConcerts.map((item) => ({ value: item.id, label: item.displayName, dot: concertStatusDots.get(item.id) })),
                 ]}
               />
             </>
           )}
         </div>
-        <div className="range-picker">
-          <div className="range-control" aria-label="Rango de fechas">
-            {(["7d", "30d", "90d"] as DateRangePreset[]).map((item) => (
-              <button key={item} className={range === item ? "active" : ""} onClick={() => { setRange(item); setCalendarOpen(false); }}>{item.replace("d", " días")}</button>
-            ))}
-            <button
-              className={cn("calendar-button", range === "custom" && "active")}
-              aria-label="Elegir fechas"
-              aria-expanded={calendarOpen}
-              onClick={() => setCalendarOpen((open) => !open)}
-            >
-              <CalendarDays className="size-4" />
-            </button>
-          </div>
-          {calendarOpen && (
-            <div className="date-range-popover" role="dialog" aria-label="Elegir rango de fechas">
-              <div className="date-range-heading"><strong>Rango personalizado</strong><span>Consulta el histórico disponible</span></div>
-              <div className="date-range-fields">
-                <label><span>Desde</span><input type="date" value={draftStartDate} max={draftEndDate || today} onInput={(event) => setDraftStartDate(event.currentTarget.value)} /></label>
-                <label><span>Hasta</span><input type="date" value={draftEndDate} min={draftStartDate} max={today} onInput={(event) => setDraftEndDate(event.currentTarget.value)} /></label>
-              </div>
-              {draftStartDate > draftEndDate && <p className="date-range-error">La fecha inicial debe ser anterior a la final.</p>}
-              <div className="date-range-actions">
-                <button onClick={() => setCalendarOpen(false)}>Cancelar</button>
-                <button className="primary" disabled={!draftStartDate || !draftEndDate || draftStartDate > draftEndDate} onClick={applyCustomRange}>Aplicar</button>
-              </div>
+        <div className="workspace-bar-right">
+          <div className="range-picker">
+            <div className="range-control" aria-label="Rango de fechas">
+              {(["7d", "30d", "90d"] as DateRangePreset[]).map((item) => (
+                <button key={item} className={range === item ? "active" : ""} onClick={() => { setRange(item); setCalendarOpen(false); }}>{item.replace("d", " días")}</button>
+              ))}
+              <button
+                className={cn("calendar-button", range === "custom" && "active")}
+                aria-label="Elegir fechas"
+                aria-expanded={calendarOpen}
+                onClick={() => setCalendarOpen((open) => !open)}
+              >
+                <CalendarDays className="size-4" />
+              </button>
             </div>
+            {calendarOpen && (
+              <div className="date-range-popover" role="dialog" aria-label="Elegir rango de fechas">
+                <div className="date-range-heading"><strong>Rango personalizado</strong><span>Consulta el histórico disponible</span></div>
+                <div className="date-range-fields">
+                  <label><span>Desde</span><input type="date" value={draftStartDate} max={draftEndDate || today} onInput={(event) => setDraftStartDate(event.currentTarget.value)} /></label>
+                  <label><span>Hasta</span><input type="date" value={draftEndDate} min={draftStartDate} max={today} onInput={(event) => setDraftEndDate(event.currentTarget.value)} /></label>
+                </div>
+                {draftStartDate > draftEndDate && <p className="date-range-error">La fecha inicial debe ser anterior a la final.</p>}
+                <div className="date-range-actions">
+                  <button onClick={() => setCalendarOpen(false)}>Cancelar</button>
+                  <button className="primary" disabled={!draftStartDate || !draftEndDate || draftStartDate > draftEndDate} onClick={applyCustomRange}>Aplicar</button>
+                </div>
+              </div>
+            )}
+          </div>
+          {view === "concerts" && workspace.user.role === "admin" && (
+            <button
+              type="button"
+              className="add-event-button"
+              onClick={() => addEventDialogRef.current?.showModal()}
+            >
+              <Plus className="size-4" />Agregar evento
+            </button>
           )}
         </div>
       </div>
@@ -333,17 +371,13 @@ export function IntelligenceDashboard() {
             projectName={project?.name}
             artists={availableArtists}
             concerts={workspace.concerts.filter((concert) => concert.projectId === projectId)}
+            campaigns={workspace.campaigns.filter((campaign) => campaign.projectId === projectId)}
             artistId={artistId}
             concertId={concertId}
             isAdmin={workspace.user.role === "admin"}
             range={range}
             startDate={customStartDate}
             endDate={customEndDate}
-            onArtistCreated={(artist) => {
-              setWorkspace((current) => current ? { ...current, artists: [...current.artists, artist] } : current);
-              setArtistId(artist.id);
-            }}
-            onConcertCreated={(concert) => setWorkspace((current) => current ? { ...current, concerts: [...current.concerts, concert] } : current)}
             onArtistUpdated={(artist) => setWorkspace((current) => current
               ? { ...current, artists: current.artists.map((item) => item.id === artist.id ? artist : item) }
               : current)}
@@ -411,6 +445,24 @@ export function IntelligenceDashboard() {
           />
         )}
       </div>
+
+      {view === "concerts" && workspace.user.role === "admin" && (
+        <AddEventDialog
+          dialogRef={addEventDialogRef}
+          organizationId={organizationId}
+          projectId={projectId}
+          artists={availableArtists}
+          selectedArtistId={artistId}
+          onArtistCreated={(artist) => {
+            setWorkspace((current) => current ? { ...current, artists: [...current.artists, artist] } : current);
+            setArtistId(artist.id);
+          }}
+          onConcertCreated={(concert) => {
+            setWorkspace((current) => current ? { ...current, concerts: [...current.concerts, concert] } : current);
+            addEventDialogRef.current?.close();
+          }}
+        />
+      )}
     </div>
   );
 }

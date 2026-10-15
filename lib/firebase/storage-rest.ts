@@ -47,3 +47,23 @@ export async function uploadPublicImage(path: string, file: File): Promise<strin
   if (!response.ok) throw new Error(`STORAGE_UPLOAD_FAILED_${response.status}`);
   return `https://firebasestorage.googleapis.com/v0/b/${bucketName}/o/${encodeURIComponent(path)}?alt=media&token=${downloadToken}`;
 }
+
+/**
+ * Deletes an object previously returned by uploadPublicImage, given its
+ * public download URL. Swallows a 404 (already gone) — anything else throws.
+ */
+export async function deletePublicImage(downloadUrl: string): Promise<void> {
+  const match = downloadUrl.match(/\/o\/([^?]+)/);
+  if (!match) return;
+  const path = decodeURIComponent(match[1]);
+
+  const [token, bucketName] = await Promise.all([accessToken(), bucket()]);
+  const url = `https://storage.googleapis.com/storage/v1/b/${encodeURIComponent(bucketName)}/o/${encodeURIComponent(path)}`;
+  const response = await fetch(url, {
+    method: "DELETE",
+    headers: { authorization: `Bearer ${token}` },
+  });
+  if (!response.ok && response.status !== 404) {
+    throw new Error(`STORAGE_DELETE_FAILED_${response.status}`);
+  }
+}

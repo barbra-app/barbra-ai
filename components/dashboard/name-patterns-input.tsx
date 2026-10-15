@@ -58,6 +58,7 @@ export function NamePatternsInput({ value, onChange }: NamePatternsInputProps) {
         </span>
       ))}
       <input
+        className="name-pattern-draft"
         value={draft}
         onChange={(event) => handleChange(event.target.value)}
         onKeyDown={handleKeyDown}
@@ -65,7 +66,7 @@ export function NamePatternsInput({ value, onChange }: NamePatternsInputProps) {
           commit(draft);
           setDraft("");
         }}
-        placeholder={value.length ? "Agregar otro patrón" : "Ej. BFL_Reykon, BFL_ReykonBog"}
+        placeholder={value.length ? "" : "Ej. BFL_Reykon, BFL_ReykonBog"}
       />
     </div>
   );

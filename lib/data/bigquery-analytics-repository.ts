@@ -1,5 +1,6 @@
 import type { AnalyticsRepository } from "@/lib/data/analytics-repository";
 import { humanizeCampaignName } from "@/lib/campaign-name";
+import { matchesConcert } from "@/lib/campaign-matching";
 import { resolveAnalyticsScope, resolveConcertScope, resolveProjectConcertScope, type CampaignAnalyticsScope, type ProjectEventScope } from "@/lib/data/analytics-scope";
 import { googleAccessToken } from "@/lib/google/access-token";
 import type {
@@ -103,7 +104,7 @@ function bigQueryParameters(params: { clientId: string; startDate: string; endDa
   ];
 }
 
-function concertQueryParameters(params: { clientId: string; startDate: string; endDate: string; patterns: string[] }) {
+function concertQueryParameters(params: { clientId: string; startDate: string; endDate: string; patterns: string[]; excludedCampaignIds?: string[] }) {
   const stringParameter = (name: string, value: string) => ({
     name,
     parameterType: { type: "STRING" },
@@ -118,8 +119,17 @@ function concertQueryParameters(params: { clientId: string; startDate: string; e
       parameterType: { type: "ARRAY", arrayType: { type: "STRING" } },
       parameterValue: { arrayValues: params.patterns.map((value) => ({ value })) },
     },
+    {
+      name: "excludedCampaignIds",
+      parameterType: { type: "ARRAY", arrayType: { type: "STRING" } },
+      parameterValue: { arrayValues: (params.excludedCampaignIds ?? []).map((value) => ({ value })) },
+    },
   ];
 }
+
+// Matches CONCAT(source, ':', campaign_id) used in the WHERE clauses below —
+// see Concert.excludedCampaignIds for why a campaign needs excluding here.
+const EXCLUDE_CAMPAIGN_CLAUSE = "AND CONCAT(source, ':', campaign_id) NOT IN UNNEST(@excludedCampaignIds)";
 
 function decodeBigQueryRows<T>(payload: BigQueryResponse): T[] {
   const fields = payload.schema?.fields ?? [];
@@ -327,15 +337,9 @@ function anchoredPattern(rawPrefix: string) {
   return `(?i)^${escapeRegExp(rawPrefix.trim())}($|[_ ])`;
 }
 
-// Same anchoring as anchoredPattern(), as a plain JS RegExp instead of a
-// BigQuery regex string, used to figure out, in application code, which
-// project-wide concert a campaign_name that already matched the combined
-// BigQuery filter actually belongs to.
-function matchesConcert(campaignName: string, namePatterns: string[]) {
-  return namePatterns.some((namePattern) =>
-    new RegExp(`^${escapeRegExp(namePattern.trim())}($|[_ ])`, "i").test(campaignName),
-  );
-}
+// matchesConcert() (same anchoring, as a plain JS RegExp instead of a
+// BigQuery regex string) is imported from @/lib/campaign-matching, shared
+// with the client-side campaign status dots in the event selector.
 
 function ratiosOf(totals: ConcertTotals) {
   return {
@@ -592,7 +596,7 @@ export class BigQueryAnalyticsRepository implements AnalyticsRepository {
   private async concertSegmentBreakdown(
     view: string,
     segmentColumn: "device" | "geo" | "age" | "gender" | "platform",
-    params: { clientId: string; startDate: string; endDate: string; patterns: string[] },
+    params: { clientId: string; startDate: string; endDate: string; patterns: string[]; excludedCampaignIds?: string[] },
   ): Promise<ConcertSegmentBreakdown[]> {
     const includeSource = segmentColumn === "platform";
     let rows: Array<{ label: string; source?: unknown; spend: unknown; billed_spend: unknown; impressions: unknown; clicks: unknown; conversions: unknown }> = [];
@@ -614,6 +618,7 @@ export class BigQueryAnalyticsRepository implements AnalyticsRepository {
           FROM UNNEST(@patterns) AS pattern
           WHERE REGEXP_CONTAINS(campaign_name, pattern)
         )
+        ${EXCLUDE_CAMPAIGN_CLAUSE}
       GROUP BY ${segmentColumn}${includeSource ? ", source" : ""}
       ORDER BY billed_spend DESC`, concertQueryParameters(params));
     } catch (error) {
@@ -765,7 +770,10 @@ export class BigQueryAnalyticsRepository implements AnalyticsRepository {
     const totalsByConcert = new Map<string, ConcertTotals>();
     for (const row of rows) {
       const campaignName = text(row.campaign_name);
-      const concert = params.concerts.find((item) => matchesConcert(campaignName, item.namePatterns));
+      const campaignKey = `${row.source}:${row.campaign_id}`;
+      const concert = params.concerts.find(
+        (item) => matchesConcert(campaignName, item.namePatterns) && !item.excludedCampaignIds.includes(campaignKey),
+      );
       if (!concert) continue;
       const totals = totalsByConcert.get(concert.id) ?? { spend: 0, billedSpend: 0, impressions: 0, clicks: 0, conversions: 0, revenue: 0 };
       totals.spend += number(row.spend);
@@ -837,6 +845,7 @@ export class BigQueryAnalyticsRepository implements AnalyticsRepository {
       startDate: isoDate(start),
       endDate: isoDate(end),
       patterns: scope.namePatterns.map(anchoredPattern),
+      excludedCampaignIds: scope.excludedCampaignIds,
     };
 
     // Grouped by date, source AND campaign: the per-platform breakdown sums
@@ -863,6 +872,7 @@ export class BigQueryAnalyticsRepository implements AnalyticsRepository {
         FROM UNNEST(@patterns) AS pattern
         WHERE REGEXP_CONTAINS(campaign_name, pattern)
       )
+      ${EXCLUDE_CAMPAIGN_CLAUSE}
     GROUP BY date, source, campaign_id
     ORDER BY date`, concertQueryParameters(params));
 

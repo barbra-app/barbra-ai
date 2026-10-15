@@ -88,6 +88,7 @@ const CreateConcertSchema = z.object({
   projectId: z.string().min(1).max(120),
   artistId: z.string().min(1).max(120),
   displayName: z.string().min(1).max(200),
+  eventDate: z.string().date().optional(),
 });
 
 export async function POST(request: Request) {
@@ -100,6 +101,7 @@ export async function POST(request: Request) {
     projectId: form.get("projectId"),
     artistId: form.get("artistId"),
     displayName: form.get("displayName"),
+    eventDate: form.get("eventDate") || undefined,
   });
   const namePatterns = parseNamePatterns(form.get("namePatterns"));
   if (!parsed.success || !namePatterns) {
@@ -133,6 +135,7 @@ export async function POST(request: Request) {
       displayName: parsed.data.displayName,
       namePatterns,
       ...(photoUrl ? { photoUrl } : {}),
+      ...(parsed.data.eventDate ? { eventDate: parsed.data.eventDate } : {}),
     }, firebaseIdToken);
 
     return NextResponse.json(
@@ -144,6 +147,7 @@ export async function POST(request: Request) {
           displayName: parsed.data.displayName,
           namePatterns,
           photoUrl,
+          eventDate: parsed.data.eventDate,
         },
       },
       { status: 201 },
@@ -172,6 +176,7 @@ const UpdateConcertSchema = z.object({
   projectId: z.string().min(1).max(120),
   artistId: z.string().min(1).max(120),
   displayName: z.string().min(1).max(200),
+  eventDate: z.string().date().optional(),
 });
 
 export async function PATCH(request: Request) {
@@ -185,6 +190,7 @@ export async function PATCH(request: Request) {
     projectId: form.get("projectId"),
     artistId: form.get("artistId"),
     displayName: form.get("displayName"),
+    eventDate: form.get("eventDate") || undefined,
   });
   const namePatterns = parseNamePatterns(form.get("namePatterns"));
   if (!parsed.success || !namePatterns) {
@@ -217,6 +223,7 @@ export async function PATCH(request: Request) {
       displayName: parsed.data.displayName,
       namePatterns,
       ...(photoUrl ? { photoUrl } : {}),
+      ...(parsed.data.eventDate ? { eventDate: parsed.data.eventDate } : {}),
     }, firebaseIdToken);
 
     return NextResponse.json({
@@ -226,6 +233,7 @@ export async function PATCH(request: Request) {
         artistId: parsed.data.artistId,
         displayName: parsed.data.displayName,
         namePatterns,
+        eventDate: parsed.data.eventDate ?? (existing.data.eventDate ? String(existing.data.eventDate) : undefined),
         photoUrl: photoUrl ?? (existing.data.photoUrl ? String(existing.data.photoUrl) : undefined),
       },
     });
