@@ -298,7 +298,7 @@ export function IntelligenceDashboard() {
           <button className={view === "dashboard" ? "active" : ""} onClick={() => setView("dashboard")}><LayoutDashboard className="size-4" />Dashboard</button>
           <button className={view === "concerts" ? "active" : ""} onClick={() => setView("concerts")}><Megaphone className="size-4" />Campañas</button>
           <button
-            className={advisorOpen ? "active" : ""}
+            className={cn("product-nav-advisor", advisorOpen && "active")}
             onClick={() => setAdvisorOpen((open) => !open)}
             aria-expanded={advisorOpen}
             aria-controls="advisor-panel"
