@@ -616,7 +616,7 @@ export class BigQueryAnalyticsRepository implements AnalyticsRepository {
         AND EXISTS (
           SELECT 1
           FROM UNNEST(@patterns) AS pattern
-          WHERE REGEXP_CONTAINS(campaign_name, pattern)
+          WHERE REGEXP_CONTAINS(TRIM(campaign_name), pattern)
         )
         ${EXCLUDE_CAMPAIGN_CLAUSE}
       GROUP BY ${segmentColumn}${includeSource ? ", source" : ""}
@@ -645,7 +645,7 @@ export class BigQueryAnalyticsRepository implements AnalyticsRepository {
     const patternFilter = `EXISTS (
           SELECT 1
           FROM UNNEST(@patterns) AS pattern
-          WHERE REGEXP_CONTAINS(campaign_name, pattern)
+          WHERE REGEXP_CONTAINS(TRIM(campaign_name), pattern)
         )`;
     const patternParams = [
       { name: "clientId", parameterType: { type: "STRING" }, parameterValue: { value: params.clientId } },
@@ -759,7 +759,7 @@ export class BigQueryAnalyticsRepository implements AnalyticsRepository {
         AND EXISTS (
           SELECT 1
           FROM UNNEST(@patterns) AS pattern
-          WHERE REGEXP_CONTAINS(campaign_name, pattern)
+          WHERE REGEXP_CONTAINS(TRIM(campaign_name), pattern)
         )
       GROUP BY source, campaign_id`, concertQueryParameters({ ...params, patterns }));
     } catch (error) {
@@ -870,13 +870,15 @@ export class BigQueryAnalyticsRepository implements AnalyticsRepository {
       AND EXISTS (
         SELECT 1
         FROM UNNEST(@patterns) AS pattern
-        WHERE REGEXP_CONTAINS(campaign_name, pattern)
+        WHERE REGEXP_CONTAINS(TRIM(campaign_name), pattern)
       )
       ${EXCLUDE_CAMPAIGN_CLAUSE}
     GROUP BY date, source, campaign_id
     ORDER BY date`, concertQueryParameters(params));
 
-    if (!rows.length) throw new Error("ANALYTICS_NO_DATA");
+    // An event can be covered only by manually reported sources (no ad
+    // campaigns yet), so an empty BigQuery result is only "no data" without them.
+    if (!rows.length && !scope.manualSources.length) throw new Error("ANALYTICS_NO_DATA");
 
     const currencies = new Set<string>();
     const bySource = new Map<string, ConcertTotals>();
@@ -947,6 +949,16 @@ export class BigQueryAnalyticsRepository implements AnalyticsRepository {
 
     if (currencies.size > 1) throw new Error("ANALYTICS_MIXED_CURRENCIES");
     const currency = [...currencies][0] ?? process.env.BIGQUERY_DEFAULT_CURRENCY ?? "COP";
+
+    // Manually reported sources carry no dates, so they're added to the
+    // total whatever the selected period, by product decision. 
+    for (const source of scope.manualSources) {
+      combined.billedSpend += source.billedSpend ?? 0;
+      combined.impressions += source.impressions ?? 0;
+      combined.clicks += source.clicks ?? 0;
+      combined.conversions += source.conversions ?? 0;
+    }
+
     const { byCampaign: creativesByCampaign } = await this.concertCreatives(params);
     const [deviceBreakdown, geoBreakdown, ageBreakdown, genderBreakdown, publisherPlatformBreakdown] = await Promise.all([
       this.concertSegmentBreakdown(this.deviceView, "device", params),
@@ -984,6 +996,7 @@ export class BigQueryAnalyticsRepository implements AnalyticsRepository {
       updatedAt: new Date().toISOString(),
       total: withRatios(combined, "total"),
       byPlatform,
+      manualSources: scope.manualSources,
       deviceBreakdown,
       geoBreakdown,
       ageBreakdown,

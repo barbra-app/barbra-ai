@@ -3,6 +3,7 @@ import { getRequestUser, requestBearerToken } from "@/lib/auth/server-session";
 import { runtimeEnv } from "@/lib/runtime-env";
 import { humanizeCampaignName } from "@/lib/campaign-name";
 import { concertExcludedCampaignIds, concertNamePatterns } from "@/lib/data/analytics-scope";
+import { manualSources } from "@/lib/data/manual-sources";
 import type { ConcertEvidencePhoto } from "@/lib/domain/analytics";
 
 export const dynamic = "force-dynamic";
@@ -99,6 +100,7 @@ export async function GET(request: Request) {
           eventDate: typeof data.eventDate === "string" ? data.eventDate : undefined,
           excludedCampaignIds: concertExcludedCampaignIds(data),
           evidencePhotos: evidencePhotos(data.evidencePhotos),
+          manualSources: manualSources(data.manualSources),
         }];
       }))
       .sort((a, b) => a.displayName.localeCompare(b.displayName, "es"));

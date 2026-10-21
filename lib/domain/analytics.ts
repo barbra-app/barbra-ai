@@ -43,6 +43,23 @@ export interface ConcertEvidencePhoto {
   uploadedAt: string;
 }
 
+// A platform whose numbers arrive outside the ad APIs and are typed in by an admin. Not tied to the selected date
+// range and not summed into the API-backed KPIs. 
+export interface ConcertManualSource {
+  id: string;
+  platform: string;
+  // On/off status set by the admin; drives the same green/red dot as API
+  active: boolean;
+  impressions: number | null;
+  clicks: number | null;
+  conversions: number | null;
+  // Fraction (0.013 = 1.3%), same as the API-backed rows.
+  ctr: number | null;
+  billedSpend: number | null;
+  notes: string;
+  updatedAt: string;
+}
+
 export interface Concert {
   id: string;
   projectId: string;
@@ -59,6 +76,7 @@ export interface Concert {
   // this concert's namePatterns on their old historical rows.
   excludedCampaignIds?: string[];
   evidencePhotos?: ConcertEvidencePhoto[];
+  manualSources?: ConcertManualSource[];
 }
 
 export interface AppUser {
@@ -196,8 +214,10 @@ export interface ConcertSummary {
   query: ConcertQuery;
   currency: string;
   updatedAt: string;
+  // Includes every manual source, regardless of the selected period.
   total: ConcertPlatformBreakdown;
   byPlatform: ConcertPlatformBreakdown[];
+  manualSources: ConcertManualSource[];
   trend: ConcertTrendPoint[];
   platformTrend: ConcertPlatformTrendPoint[];
   deviceBreakdown: ConcertSegmentBreakdown[];

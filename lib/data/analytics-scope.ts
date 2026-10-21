@@ -1,5 +1,6 @@
 import { getFirestoreDocument, queryFirestoreDocuments } from "@/lib/firebase/firestore-rest";
-import type { AnalyticsQuery, ConcertQuery } from "@/lib/domain/analytics";
+import { manualSources } from "@/lib/data/manual-sources";
+import type { AnalyticsQuery, ConcertManualSource, ConcertQuery } from "@/lib/domain/analytics";
 
 export interface CampaignAnalyticsScope {
   source: string;
@@ -75,6 +76,7 @@ export interface ConcertAnalyticsScope {
   clientId: string;
   namePatterns: string[];
   excludedCampaignIds: string[];
+  manualSources: ConcertManualSource[];
 }
 
 /**
@@ -104,7 +106,12 @@ export async function resolveConcertScope(query: ConcertQuery, firebaseIdToken?:
     }
     const namePatterns = concertNamePatterns(concert.data);
     if (!namePatterns.length) throw new Error("ANALYTICS_CONCERT_NOT_CONFIGURED");
-    return { clientId, namePatterns, excludedCampaignIds: concertExcludedCampaignIds(concert.data) };
+    return {
+      clientId,
+      namePatterns,
+      excludedCampaignIds: concertExcludedCampaignIds(concert.data),
+      manualSources: manualSources(concert.data.manualSources),
+    };
   }
 
   // Firestore REST queries only filter on one field; narrow by artistId and
@@ -115,7 +122,12 @@ export async function resolveConcertScope(query: ConcertQuery, firebaseIdToken?:
   const excludedCampaignIds = matchingConcerts.flatMap((document) => concertExcludedCampaignIds(document.data));
 
   if (!namePatterns.length) throw new Error("ANALYTICS_ARTIST_NOT_CONFIGURED");
-  return { clientId, namePatterns, excludedCampaignIds };
+  return {
+    clientId,
+    namePatterns,
+    excludedCampaignIds,
+    manualSources: matchingConcerts.flatMap((document) => manualSources(document.data.manualSources)),
+  };
 }
 
 export interface ProjectEventScope {

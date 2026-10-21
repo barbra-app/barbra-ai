@@ -64,6 +64,19 @@ const METRIC_ICONS = {
   roas: TrendingUp,
 };
 
+const RANGE_PRESET_LABELS: Record<DateRangePreset, string> = {
+  "7d": "7 días",
+  "30d": "30 días",
+  "90d": "90 días",
+  all: "Todo",
+};
+
+function rangePeriodLabel(range: DateRange) {
+  if (range === "custom") return "en el rango seleccionado";
+  if (range === "all") return "en todo el historial";
+  return `en los últimos ${range.replace("d", "")} días`;
+}
+
 function todayInBogota() {
   return new Intl.DateTimeFormat("en-CA", {
     timeZone: "America/Bogota",
@@ -111,9 +124,9 @@ export function IntelligenceDashboard() {
   const today = useMemo(todayInBogota, []);
   // Dot next to each event in the selector: gray once the event date has
   // passed (regardless of campaign status), else green if any matched
-  // campaign is still active, else red if every matched campaign is
-  // paused/completed. No dot when nothing can be determined (no event date
-  // and no matching campaigns).
+  // campaign or manual source is still active, else red if every one is
+  // paused/completed/off. No dot when nothing can be determined (no event
+  // date, no matching campaigns and no manual sources).
   const concertStatusDots = useMemo(() => {
     const projectCampaigns = workspace?.campaigns.filter((campaign) => campaign.projectId === projectId) ?? [];
     const dots = new Map<string, "green" | "red" | "gray">();
@@ -127,8 +140,10 @@ export function IntelligenceDashboard() {
           matchesConcert(campaign.sourceName ?? campaign.name, concert.namePatterns) &&
           !concert.excludedCampaignIds?.includes(`${campaign.channel}:${campaign.externalCampaignId}`),
       );
-      if (!matched.length) continue;
-      dots.set(concert.id, matched.some((campaign) => campaign.status === "active") ? "green" : "red");
+      const manualSources = concert.manualSources ?? [];
+      if (!matched.length && !manualSources.length) continue;
+      const anyActive = matched.some((campaign) => campaign.status === "active") || manualSources.some((source) => source.active);
+      dots.set(concert.id, anyActive ? "green" : "red");
     }
     return dots;
   }, [artistConcerts, projectId, today, workspace]);
@@ -245,7 +260,7 @@ export function IntelligenceDashboard() {
   if (!workspaceReady) return <IntelligenceDashboardSkeleton />;
   if (!workspace) return <WorkspaceLoadError message={workspaceError ?? "No fue posible cargar tus accesos"} />;
 
-  const rangeLabel = range === "custom" ? `${customStartDate} – ${customEndDate}` : `Últimos ${range.replace("d", "")} días`;
+  const rangeLabel = range === "custom" ? `${customStartDate} – ${customEndDate}` : range === "all" ? "Todo el historial" : `Últimos ${range.replace("d", "")} días`;
   const advisorScope: AdvisorScope | null = view === "dashboard"
     ? (organizationId && projectId
       ? {
@@ -256,7 +271,17 @@ export function IntelligenceDashboard() {
         endDate: range === "custom" ? customEndDate : undefined,
       }
       : null)
-    : (organizationId && projectId && artistId ? { organizationId, projectId, artistId, concertId: concertId !== "all" ? concertId : null } : null);
+    : (organizationId && projectId && artistId
+      ? {
+        organizationId,
+        projectId,
+        artistId,
+        concertId: concertId !== "all" ? concertId : null,
+        range,
+        startDate: range === "custom" ? customStartDate : undefined,
+        endDate: range === "custom" ? customEndDate : undefined,
+      }
+      : null);
   const advisorReady = view === "dashboard" ? Boolean(snapshot) : Boolean(advisorScope);
   const advisorPeriodLabel = view === "dashboard" ? (snapshot?.periodLabel ?? rangeLabel) : rangeLabel;
   const advisorUpdatedAt = view === "dashboard" ? (snapshot?.updatedAt ?? new Date().toISOString()) : (concertUpdatedAt ?? new Date().toISOString());
@@ -324,8 +349,8 @@ export function IntelligenceDashboard() {
         <div className="workspace-bar-right">
           <div className="range-picker">
             <div className="range-control" aria-label="Rango de fechas">
-              {(["7d", "30d", "90d"] as DateRangePreset[]).map((item) => (
-                <button key={item} className={range === item ? "active" : ""} onClick={() => { setRange(item); setCalendarOpen(false); }}>{item.replace("d", " días")}</button>
+              {(["7d", "30d", "all"] as DateRangePreset[]).map((item) => (
+                <button key={item} className={range === item ? "active" : ""} onClick={() => { setRange(item); setCalendarOpen(false); }}>{RANGE_PRESET_LABELS[item]}</button>
               ))}
               <button
                 className={cn("calendar-button", range === "custom" && "active")}
@@ -394,7 +419,7 @@ export function IntelligenceDashboard() {
                 <p>
                   {snapshot?.periodLabel
                     ?? (issue?.kind === "empty"
-                      ? range === "custom" ? `${customStartDate} – ${customEndDate}` : `Últimos ${range.replace("d", "")} días`
+                      ? range === "custom" ? `${customStartDate} – ${customEndDate}` : range === "all" ? "Todo el historial" : `Últimos ${range.replace("d", "")} días`
                       : "Consultando periodo")}
                 </p>
               </div>
@@ -413,7 +438,7 @@ export function IntelligenceDashboard() {
             {issue?.kind === "empty" ? (
               <DashboardEmptyState
                 range={range}
-                onTryNinetyDays={() => setRange("90d")}
+                onTryAllTime={() => setRange("all")}
               />
             ) : issue?.kind === "error" ? <DashboardError message={issue.message} /> : !snapshot ? <DashboardSkeleton /> : (
               <div className={loading ? "is-refreshing" : undefined}>
@@ -635,12 +660,12 @@ function TopAdsCard({ ads }: { ads: AdPerformance[] }) {
 
 function DashboardEmptyState({
   range,
-  onTryNinetyDays,
+  onTryAllTime,
 }: {
   range: DateRange;
-  onTryNinetyDays: () => void;
+  onTryAllTime: () => void;
 }) {
-  const period = range === "custom" ? "en el rango seleccionado" : `en los últimos ${range.replace("d", "")} días`;
+  const period = rangePeriodLabel(range);
 
   return (
     <section className="dashboard-empty" aria-live="polite">
@@ -650,7 +675,7 @@ function DashboardEmptyState({
         <p>Esta selección no registró métricas {period}.</p>
       </div>
       <div className="dashboard-empty-actions">
-        {range !== "90d" && <button onClick={onTryNinetyDays}>Probar 90 días</button>}
+        {range !== "all" && <button onClick={onTryAllTime}>Ver todo el historial</button>}
       </div>
     </section>
   );

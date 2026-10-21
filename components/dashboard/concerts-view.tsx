@@ -22,7 +22,8 @@ import {
 } from "recharts";
 import { EditEventDialog } from "@/components/dashboard/edit-event-dialog";
 import { LabeledSelect } from "@/components/dashboard/labeled-select";
-import type { Artist, Campaign, Concert, ConcertEvidencePhoto, ConcertMetricKey, ConcertPlatformBreakdown, ConcertPlatformTrendPoint, ConcertSegmentBreakdown, ConcertSummary, DateRange } from "@/lib/domain/analytics";
+import { ManualSourceDialog } from "@/components/dashboard/manual-source-dialog";
+import type { Artist, Campaign, Concert, ConcertEvidencePhoto, ConcertManualSource,ConcertMetricKey, ConcertPlatformBreakdown, ConcertPlatformTrendPoint, ConcertSegmentBreakdown, ConcertSummary, DateRange } from "@/lib/domain/analytics";
 import { getFirebaseIdToken } from "@/lib/firebase/client";
 import { cn, formatCurrency, formatNumber, formatPercent } from "@/lib/utils";
 
@@ -60,13 +61,12 @@ function sourceLabel(source: string) {
   return SOURCE_LABELS[source] ?? source;
 }
 
-type SegmentMetricKey = "impressions" | "clicks" | "conversions" | "billedSpend" | "spend";
+type SegmentMetricKey = "impressions" | "clicks" | "conversions" | "billedSpend";
 const SEGMENT_METRIC_OPTIONS: { value: SegmentMetricKey; label: string; format: "number" | "currency" }[] = [
   { value: "impressions", label: "Impresiones", format: "number" },
   { value: "clicks", label: "Clics", format: "number" },
   { value: "conversions", label: "Conversiones", format: "number" },
   { value: "billedSpend", label: "Gasto", format: "currency" },
-  { value: "spend", label: "Inversión real", format: "currency" },
 ];
 
 function SegmentMetricMenu({ value, onChange }: { value: SegmentMetricKey; onChange: (value: SegmentMetricKey) => void }) {
@@ -129,7 +129,6 @@ function SegmentMetricMenu({ value, onChange }: { value: SegmentMetricKey; onCha
 const METRIC_OPTIONS: { value: ConcertMetricKey; label: string; format: "currency" | "number" | "percent" | "ratio" }[] = [
   { value: "conversions", label: "Conversiones", format: "number" },
   { value: "billedSpend", label: "Gasto", format: "currency" },
-  { value: "spend", label: "Inversión real", format: "currency" },
   { value: "impressions", label: "Impresiones", format: "number" },
   { value: "clicks", label: "Clics", format: "number" },
   { value: "revenue", label: "Revenue", format: "currency" },
@@ -183,6 +182,8 @@ export function ConcertsView({
   const [expandedSource, setExpandedSource] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Bumped after a manual source is saved/deleted: the server folds manual sources into summary.total, so the summary has to be refetched.
+  const [manualSourcesRevision, setManualSourcesRevision] = useState(0);
   // "source:campaignId" -> campaign status, to show a dot next to each
   // campaign row in the platform breakdown (same meaning as the event
   // selector's dot: green active, red paused, gray completed/archived).
@@ -225,7 +226,7 @@ export function ConcertsView({
       })
       .finally(() => setLoading(false));
     return () => controller.abort();
-  }, [organizationId, projectId, artistId, concertId, range, startDate, endDate]);
+  }, [organizationId, projectId, artistId, concertId, range, startDate, endDate, manualSourcesRevision]);
 
   const activeArtist = artists.find((artist) => artist.id === artistId);
   const activeConcert = concertId !== "all" ? concerts.find((concert) => concert.id === concertId) : undefined;
@@ -238,6 +239,18 @@ export function ConcertsView({
   function handleEvidencePhotoAdded(concertId: string, evidencePhotos: ConcertEvidencePhoto[]) {
     const concert = concerts.find((item) => item.id === concertId);
     if (concert) onConcertUpdated({ ...concert, evidencePhotos });
+  }
+
+  // Inside an event: that event's manual sources (editable). On the artist
+  // summary: every event's sources, read-only and labeled with the event
+  const visibleManualSources = (activeConcert ? [activeConcert] : concerts.filter((concert) => concert.artistId === artistId))
+    .flatMap((concert) => (concert.manualSources ?? []).map((source) => ({ source, concert })));
+  const manualSourceDialogRef = useRef<HTMLDialogElement>(null);
+  const [editingManualSource, setEditingManualSource] = useState<ConcertManualSource | undefined>();
+
+  function openManualSource(source?: ConcertManualSource) {
+    setEditingManualSource(source);
+    manualSourceDialogRef.current?.showModal();
   }
 
   return (
@@ -293,6 +306,13 @@ export function ConcertsView({
           <article className="chart-card concert-breakdown-card">
             <div className="card-heading">
               <h2>Desglose por plataforma</h2>
+              {isAdmin && activeConcert && (
+                <div className="concert-creatives-heading-actions">
+                  <button type="button" className="concert-creatives-toggle" onClick={() => openManualSource()}>
+                    <Plus className="size-3.5" />Añadir fuente
+                  </button>
+                </div>
+              )}
             </div>
             <div className="concert-breakdown-table">
               <div className="concert-breakdown-row concert-breakdown-header">
@@ -350,7 +370,44 @@ export function ConcertsView({
                   </div>
                 );
               })}
+              {visibleManualSources.map(({ source, concert }) => (
+                <div className="concert-breakdown-row concert-manual-row" key={source.id}>
+                  <span className="concert-breakdown-platform">
+                    <span className="concert-manual-spacer" aria-hidden="true" />
+                    <span className={`select-dot select-dot-${source.active ? "green" : "red"}`} aria-hidden="true" />
+                    {source.platform}
+                    <button type="button" className="segment-sources-info" aria-label={`Información de la fuente ${source.platform}`}>
+                      <Info className="size-3.5" aria-hidden="true" />
+                      <span className="segment-sources-popover concert-manual-popover">
+                        <strong>Fuente manual · {source.active ? "activa" : "inactiva"}</strong>
+                        {!activeConcert && <span>{concert.displayName}</span>}
+                        {source.notes ? <span className="concert-manual-notes">{source.notes}</span> : <span>Sin anotaciones.</span>}
+                      </span>
+                    </button>
+                  </span>
+                  <span>{source.impressions === null ? "—" : formatNumber(source.impressions)}</span>
+                  <span>{source.clicks === null ? "—" : formatNumber(source.clicks)}</span>
+                  <span>{source.conversions === null ? "—" : formatNumber(source.conversions)}</span>
+                  <span>{source.ctr === null ? "—" : formatPercent(source.ctr)}</span>
+                  <span className="concert-manual-last">
+                    {source.billedSpend === null ? "—" : formatCurrency(source.billedSpend, summary.currency)}
+                    {isAdmin && activeConcert && (
+                      <button
+                        type="button"
+                        className="concert-manual-edit"
+                        aria-label={`Editar fuente ${source.platform}`}
+                        onClick={() => openManualSource(source)}
+                      >
+                        <Pencil className="size-3.5" />
+                      </button>
+                    )}
+                  </span>
+                </div>
+              ))}
             </div>
+            {visibleManualSources.length > 0 && (
+              <p className="concert-manual-footnote">Las fuentes manuales se suman siempre a los totales, sin importar el periodo seleccionado.</p>
+            )}
           </article>
 
           {(summary.geoBreakdown.length > 0 || summary.ageBreakdown.length > 0 || summary.genderBreakdown.length > 0) && (
@@ -407,6 +464,20 @@ export function ConcertsView({
           concert={activeConcert}
           onArtistUpdated={onArtistUpdated}
           onConcertUpdated={onConcertUpdated}
+        />
+      )}
+
+      {isAdmin && activeConcert && (
+        <ManualSourceDialog
+          dialogRef={manualSourceDialogRef}
+          organizationId={organizationId}
+          projectId={projectId}
+          concertId={activeConcert.id}
+          source={editingManualSource}
+          onSaved={(manualSources) => {
+            onConcertUpdated({ ...activeConcert, manualSources });
+            setManualSourcesRevision((value) => value + 1);
+          }}
         />
       )}
     </main>
