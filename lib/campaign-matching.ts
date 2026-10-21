@@ -8,7 +8,8 @@ function escapeRegExp(input: string) {
 // Same anchoring as the BigQuery-side anchoredPattern(): case-insensitive,
 // matches from the start of the campaign name up to a separator or the end.
 export function matchesConcert(campaignName: string, namePatterns: string[]) {
+  const trimmedCampaignName = campaignName.trim();
   return namePatterns.some((namePattern) =>
-    new RegExp(`^${escapeRegExp(namePattern.trim())}($|[_ ])`, "i").test(campaignName),
+    new RegExp(`^${escapeRegExp(namePattern.trim())}($|[_ ])`, "i").test(trimmedCampaignName),
   );
 }

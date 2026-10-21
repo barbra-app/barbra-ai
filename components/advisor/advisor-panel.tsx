@@ -169,6 +169,7 @@ function AdvisorPart({ part }: { part: any }) {
   if (name === "get_campaign_performance") return <CampaignAnswer data={data} />;
   if (name === "get_channel_mix") return <ChannelAnswer data={data} />;
   if (name === "get_concert_summary") return <ConcertSummaryAnswer byPlatform={data?.byPlatform ?? []} currency={data?.currency ?? "COP"} />;
+  if (name === "get_concert_breakdown") return <ConcertBreakdownAnswer data={data} />;
   if (name === "get_concert_campaigns") return <ConcertCampaignAnswer rows={(data?.rows ?? []).map((row: any) => ({ id: row.campaignId, name: row.campaignName, roas: row.roas, spend: row.spend }))} currency={data?.currency ?? "COP"} />;
   return null;
 }
@@ -272,6 +273,30 @@ function ConcertSummaryAnswer({ byPlatform, currency }: { byPlatform: any[]; cur
           <small>{formatCurrency(Number(row.billedSpend), currency)}</small>
         </div>
       ))}
+    </div>
+  );
+}
+
+const BREAKDOWN_SORT_LABELS: Record<string, string> = { billedSpend: "gasto", conversions: "conversiones", impressions: "impresiones", clicks: "clics" };
+
+function ConcertBreakdownAnswer({ data }: { data: any }) {
+  const rows = data?.rows ?? [];
+  const currency = data?.currency ?? "COP";
+  const sortBy = data?.sortBy ?? "billedSpend";
+  const max = Math.max(...rows.map((row: any) => Number(row[sortBy])), 1);
+  const labels: Record<string, string> = { google_ads: "Google Ads", meta_ads: "Meta Ads", tiktok_ads: "TikTok Ads", dv360: "DV360" };
+  const format = (value: number) => sortBy === "billedSpend" ? formatCurrency(value, currency) : formatNumber(value);
+  return (
+    <div className="visual-answer channel-answer">
+      <div className="visual-answer-heading"><strong>Desglose por {data?.dimensionLabel}</strong><span>por {BREAKDOWN_SORT_LABELS[sortBy] ?? sortBy}</span></div>
+      {rows.map((row: any) => (
+        <div key={`${row.label}:${row.source ?? ""}`}>
+          <div><span>{row.label}{row.source ? ` · ${labels[row.source] ?? row.source}` : ""}</span><strong>{format(Number(row[sortBy]))}</strong></div>
+          <i><b style={{ width: `${(Number(row[sortBy]) / max) * 100}%` }} /></i>
+          <small>{formatNumber(Number(row.conversions))} conv. · CPA {formatCurrency(Number(row.cpa), currency)} · {formatPercent(Number(row.spendShare), 0)} del gasto</small>
+        </div>
+      ))}
+      {data?.others && <small>+{data.others.segmentCount} segmentos más · {formatPercent(Number(data.others.spendShare), 0)} del gasto</small>}
     </div>
   );
 }

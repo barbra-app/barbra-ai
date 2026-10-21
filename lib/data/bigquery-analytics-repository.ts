@@ -616,7 +616,7 @@ export class BigQueryAnalyticsRepository implements AnalyticsRepository {
         AND EXISTS (
           SELECT 1
           FROM UNNEST(@patterns) AS pattern
-          WHERE REGEXP_CONTAINS(campaign_name, pattern)
+          WHERE REGEXP_CONTAINS(TRIM(campaign_name), pattern)
         )
         ${EXCLUDE_CAMPAIGN_CLAUSE}
       GROUP BY ${segmentColumn}${includeSource ? ", source" : ""}
@@ -645,7 +645,7 @@ export class BigQueryAnalyticsRepository implements AnalyticsRepository {
     const patternFilter = `EXISTS (
           SELECT 1
           FROM UNNEST(@patterns) AS pattern
-          WHERE REGEXP_CONTAINS(campaign_name, pattern)
+          WHERE REGEXP_CONTAINS(TRIM(campaign_name), pattern)
         )`;
     const patternParams = [
       { name: "clientId", parameterType: { type: "STRING" }, parameterValue: { value: params.clientId } },
@@ -759,7 +759,7 @@ export class BigQueryAnalyticsRepository implements AnalyticsRepository {
         AND EXISTS (
           SELECT 1
           FROM UNNEST(@patterns) AS pattern
-          WHERE REGEXP_CONTAINS(campaign_name, pattern)
+          WHERE REGEXP_CONTAINS(TRIM(campaign_name), pattern)
         )
       GROUP BY source, campaign_id`, concertQueryParameters({ ...params, patterns }));
     } catch (error) {
@@ -870,7 +870,7 @@ export class BigQueryAnalyticsRepository implements AnalyticsRepository {
       AND EXISTS (
         SELECT 1
         FROM UNNEST(@patterns) AS pattern
-        WHERE REGEXP_CONTAINS(campaign_name, pattern)
+        WHERE REGEXP_CONTAINS(TRIM(campaign_name), pattern)
       )
       ${EXCLUDE_CAMPAIGN_CLAUSE}
     GROUP BY date, source, campaign_id

@@ -60,13 +60,12 @@ function sourceLabel(source: string) {
   return SOURCE_LABELS[source] ?? source;
 }
 
-type SegmentMetricKey = "impressions" | "clicks" | "conversions" | "billedSpend" | "spend";
+type SegmentMetricKey = "impressions" | "clicks" | "conversions" | "billedSpend";
 const SEGMENT_METRIC_OPTIONS: { value: SegmentMetricKey; label: string; format: "number" | "currency" }[] = [
   { value: "impressions", label: "Impresiones", format: "number" },
   { value: "clicks", label: "Clics", format: "number" },
   { value: "conversions", label: "Conversiones", format: "number" },
   { value: "billedSpend", label: "Gasto", format: "currency" },
-  { value: "spend", label: "Inversión real", format: "currency" },
 ];
 
 function SegmentMetricMenu({ value, onChange }: { value: SegmentMetricKey; onChange: (value: SegmentMetricKey) => void }) {
@@ -129,7 +128,6 @@ function SegmentMetricMenu({ value, onChange }: { value: SegmentMetricKey; onCha
 const METRIC_OPTIONS: { value: ConcertMetricKey; label: string; format: "currency" | "number" | "percent" | "ratio" }[] = [
   { value: "conversions", label: "Conversiones", format: "number" },
   { value: "billedSpend", label: "Gasto", format: "currency" },
-  { value: "spend", label: "Inversión real", format: "currency" },
   { value: "impressions", label: "Impresiones", format: "number" },
   { value: "clicks", label: "Clics", format: "number" },
   { value: "revenue", label: "Revenue", format: "currency" },
