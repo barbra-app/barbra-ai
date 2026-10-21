@@ -261,13 +261,14 @@ export function getConcertAnalyticsTools(context: {
 
   return {
     get_concert_summary: tool({
-      description: "Get verified KPI totals per platform (Google Ads, Meta Ads, TikTok Ads) and combined trend for the selected artist/concert. Supports presets, all available history, or explicit custom dates.",
+      description: "Get verified KPI totals per platform (Google Ads, Meta Ads, TikTok Ads), manually reported sources (e.g. Uber) and combined trend for the selected artist/concert. Supports presets, all available history, or explicit custom dates.",
       inputSchema: z.object(periodSchema),
       execute: async (period) => {
         const data = await summary(period);
         return {
           total: data.total,
           byPlatform: data.byPlatform.map(({ campaigns: _campaigns, ...platform }) => platform),
+          manualSources: data.manualSources.map(({ id: _id, updatedAt: _updatedAt, ...source }) => source),
           trend: data.trend,
           updatedAt: data.updatedAt,
           currency: data.currency,

@@ -124,9 +124,9 @@ export function IntelligenceDashboard() {
   const today = useMemo(todayInBogota, []);
   // Dot next to each event in the selector: gray once the event date has
   // passed (regardless of campaign status), else green if any matched
-  // campaign is still active, else red if every matched campaign is
-  // paused/completed. No dot when nothing can be determined (no event date
-  // and no matching campaigns).
+  // campaign or manual source is still active, else red if every one is
+  // paused/completed/off. No dot when nothing can be determined (no event
+  // date, no matching campaigns and no manual sources).
   const concertStatusDots = useMemo(() => {
     const projectCampaigns = workspace?.campaigns.filter((campaign) => campaign.projectId === projectId) ?? [];
     const dots = new Map<string, "green" | "red" | "gray">();
@@ -140,8 +140,10 @@ export function IntelligenceDashboard() {
           matchesConcert(campaign.sourceName ?? campaign.name, concert.namePatterns) &&
           !concert.excludedCampaignIds?.includes(`${campaign.channel}:${campaign.externalCampaignId}`),
       );
-      if (!matched.length) continue;
-      dots.set(concert.id, matched.some((campaign) => campaign.status === "active") ? "green" : "red");
+      const manualSources = concert.manualSources ?? [];
+      if (!matched.length && !manualSources.length) continue;
+      const anyActive = matched.some((campaign) => campaign.status === "active") || manualSources.some((source) => source.active);
+      dots.set(concert.id, anyActive ? "green" : "red");
     }
     return dots;
   }, [artistConcerts, projectId, today, workspace]);
