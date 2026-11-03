@@ -45,6 +45,7 @@ export async function GET(request: Request) {
       id: doc.id,
       name: String(doc.data.name ?? doc.id),
       slug: String(doc.data.slug ?? doc.id),
+      photoUrl: doc.data.photoUrl ? String(doc.data.photoUrl) : undefined,
     }));
     const projects = projectDocs.filter((doc) => doc.exists).map((doc) => ({
       id: doc.id,

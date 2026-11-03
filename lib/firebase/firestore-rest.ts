@@ -138,3 +138,10 @@ export async function queryFirestoreDocuments(collection: string, field: string,
   const rows = await response.json() as { document?: Parameters<typeof decodeDocument>[0] }[];
   return rows.flatMap((row) => row.document ? [decodeDocument(row.document)] : []);
 }
+
+export async function deleteFirestoreDocument(collection: string, id: string, firebaseIdToken?: string) {
+  const response = await authorizedFetch(`${await baseUrl()}/${encodeURIComponent(collection)}/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+  }, firebaseIdToken);
+  if (!response.ok && response.status !== 404) throw new Error(`FIRESTORE_DELETE_FAILED_${response.status}`);
+}

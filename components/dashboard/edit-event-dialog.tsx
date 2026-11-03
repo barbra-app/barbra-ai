@@ -5,6 +5,7 @@ import { X } from "lucide-react";
 import type { Artist, Concert } from "@/lib/domain/analytics";
 import { getFirebaseIdToken } from "@/lib/firebase/client";
 import { AvatarPhotoField } from "./avatar-photo-field";
+import { useConfirmDialog } from "./confirm-dialog";
 import { NamePatternsInput } from "./name-patterns-input";
 
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
@@ -23,6 +24,7 @@ export function EditEventDialog({
   artist,
   concert,
   onArtistUpdated,
+  onArtistDeleted,
   onConcertUpdated,
 }: {
   dialogRef: React.RefObject<HTMLDialogElement | null>;
@@ -32,11 +34,14 @@ export function EditEventDialog({
   concert?: Concert;
   onArtistUpdated: (artist: Artist) => void;
   onConcertUpdated: (concert: Concert) => void;
+  onArtistDeleted?: (artistId: string) => void;
 }) {
   const [artistName, setArtistName] = useState(artist?.displayName ?? "");
   const [artistPhoto, setArtistPhoto] = useState<File | undefined>();
   const [artistSubmitting, setArtistSubmitting] = useState(false);
   const [artistError, setArtistError] = useState<string | null>(null);
+  const [artistDeleting, setArtistDeleting] = useState(false);
+  const { confirm, element: confirmDialog } = useConfirmDialog();
 
   const [concertName, setConcertName] = useState(concert?.displayName ?? "");
   const [eventDate, setEventDate] = useState(concert?.eventDate ?? "");
@@ -94,6 +99,33 @@ export function EditEventDialog({
     }
   }
 
+  async function deleteArtist() {
+    if (!artist) return;
+    const confirmed = await confirm(
+      `¿Borrar a "${artist.displayName}"? Esta acción no se puede deshacer.`,
+      "Borrar artista",
+    );
+    if (!confirmed) return;
+    setArtistDeleting(true);
+    setArtistError(null);
+    try {
+      const token = await getFirebaseIdToken();
+      const params = new URLSearchParams({ id: artist.id, organizationId, projectId });
+      const response = await fetch(`/api/artists?${params}`, {
+        method: "DELETE",
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error ?? "No fue posible borrar el artista");
+      onArtistDeleted?.(artist.id);
+      dialogRef.current?.close();
+    } catch (reason) {
+      setArtistError(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      setArtistDeleting(false);
+    }
+  }
+
   async function submitConcert(event: FormEvent) {
     event.preventDefault();
     if (!concert) return;
@@ -146,6 +178,7 @@ export function EditEventDialog({
         <h2 id="edit-event-title">Editar {concert ? "evento" : "artista"}</h2>
         <button type="button" aria-label="Cerrar" onClick={() => dialogRef.current?.close()}><X className="size-4" /></button>
       </div>
+      {confirmDialog}
       <div className="concert-admin-forms">
         <form className="auth-field" onSubmit={submitArtist}>
           <span>Artista</span>
@@ -153,9 +186,21 @@ export function EditEventDialog({
             <AvatarPhotoField label="Foto del artista" currentUrl={artist.photoUrl} onFileChange={setArtistPhoto} />
             <input value={artistName} onChange={(event) => setArtistName(event.target.value)} placeholder="Ej. Reykon" required />
           </div>
-          <button className="auth-submit" type="submit" disabled={artistSubmitting || !artistName.trim()}>
-            {artistSubmitting ? "Guardando…" : "Guardar artista"}
-          </button>
+          <div className="artist-form-actions">
+            <button className="auth-submit" type="submit" disabled={artistSubmitting || !artistName.trim()}>
+              {artistSubmitting ? "Guardando…" : "Guardar artista"}
+            </button>
+            <button
+              type="button"
+              className="artist-delete-button"
+              onClick={deleteArtist}
+              disabled={artistDeleting}
+              aria-label="Borrar artista"
+              title="Borrar artista"
+            >
+              {artistDeleting ? "Borrando…" : "Borrar artista"}
+            </button>
+          </div>
           {artistError && <small className="auth-error" aria-live="polite">{artistError}</small>}
         </form>
 

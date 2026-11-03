@@ -159,6 +159,7 @@ export function ConcertsView({
   startDate,
   endDate,
   onArtistUpdated,
+  onArtistDeleted,
   onConcertUpdated,
   onSummaryUpdated,
 }: {
@@ -175,6 +176,7 @@ export function ConcertsView({
   startDate: string;
   endDate: string;
   onArtistUpdated: (artist: Artist) => void;
+  onArtistDeleted?: (artistId: string) => void;
   onConcertUpdated: (concert: Concert) => void;
   onSummaryUpdated?: (summary: ConcertSummary) => void;
 }) {
@@ -463,6 +465,7 @@ export function ConcertsView({
           artist={activeArtist}
           concert={activeConcert}
           onArtistUpdated={onArtistUpdated}
+          onArtistDeleted={onArtistDeleted}
           onConcertUpdated={onConcertUpdated}
         />
       )}
