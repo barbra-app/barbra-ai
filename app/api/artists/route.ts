@@ -142,3 +142,57 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: "Unable to update artist" }, { status: 500 });
   }
 }
+
+const DeleteArtistSchema = z.object({
+  id: z.string().min(1).max(200),
+  organizationId: z.string().min(1).max(120),
+  projectId: z.string().min(1).max(120),
+});
+
+export async function DELETE(request: Request) {
+  const url = new URL(request.url);
+  const parsed = DeleteArtistSchema.safeParse({
+    id: url.searchParams.get("id"),
+    organizationId: url.searchParams.get("organizationId"),
+    projectId: url.searchParams.get("projectId"),
+  });
+  if (!parsed.success) {
+    return NextResponse.json({ error: "Invalid artist payload", details: parsed.error.flatten() }, { status: 400 });
+  }
+
+  try {
+    const user = await getRequestUser(request);
+    assertProjectAccess(user, parsed.data.organizationId, parsed.data.projectId);
+    assertAdmin(user);
+
+    const { getFirestoreDocument, deleteFirestoreDocument, queryFirestoreDocuments } = await import("@/lib/firebase/firestore-rest");
+    const useServiceAccount = await runtimeEnv("FIRESTORE_USE_SERVICE_ACCOUNT") === "true";
+    const firebaseIdToken = useServiceAccount ? undefined : requestBearerToken(request) ?? undefined;
+
+    const existing = await getFirestoreDocument("artists", parsed.data.id, firebaseIdToken);
+    if (!existing.exists || existing.data.projectId !== parsed.data.projectId) {
+      return NextResponse.json({ error: "El artista no existe en este proyecto" }, { status: 404 });
+    }
+
+    const concerts = await queryFirestoreDocuments("concerts", "artistId", parsed.data.id, firebaseIdToken);
+    if (concerts.length > 0) {
+      return NextResponse.json(
+        { error: `No se puede borrar: el artista tiene ${concerts.length} evento(s) asociados. Borra o reasigna esos eventos primero.` },
+        { status: 409 },
+      );
+    }
+
+    await deleteFirestoreDocument("artists", parsed.data.id, firebaseIdToken);
+
+    return NextResponse.json({ data: { id: parsed.data.id } });
+  } catch (error) {
+    if (error instanceof Error && error.message === "UNAUTHENTICATED") {
+      return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+    }
+    if (error instanceof Error && error.message === "FORBIDDEN") {
+      return NextResponse.json({ error: "Admin access required" }, { status: 403 });
+    }
+    console.error("[artists] delete failed", error);
+    return NextResponse.json({ error: "Unable to delete artist" }, { status: 500 });
+  }
+}

@@ -36,6 +36,7 @@ import { DashboardSkeleton, IntelligenceDashboardSkeleton } from "@/components/d
 import { LabeledSelect } from "@/components/dashboard/labeled-select";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
 import { UserProfileMenu } from "@/components/profile/user-profile-menu";
+import { SettingsView } from "@/components/dashboard/settings-view";
 import {
   type AdPerformance,
   type AdvisorScope,
@@ -106,7 +107,7 @@ type DashboardIssue = {
 };
 
 export function IntelligenceDashboard() {
-  const [view, setView] = useState<"dashboard" | "concerts">("dashboard");
+  const [view, setView] = useState<"dashboard" | "concerts" | "settings">("dashboard");
   const [workspace, setWorkspace] = useState<{ user: AppUser; organizations: Organization[]; projects: Project[]; campaigns: Campaign[]; artists: Artist[]; concerts: Concert[] } | null>(null);
   const [workspaceReady, setWorkspaceReady] = useState(false);
   const [workspaceError, setWorkspaceError] = useState<string | null>(null);
@@ -323,13 +324,23 @@ export function IntelligenceDashboard() {
             organizationCount={workspace.organizations.length}
             projectCount={workspace.projects.length}
             campaignCount={workspace.campaigns.length}
+            onOpenSettings={() => setView("settings")}
           />
         </div>
       </header>
 
+      {view !== "settings" && (
       <div className="workspace-bar">
         <div className="workspace-selectors">
-          <LabeledSelect label="Organización" value={organizationId} onChange={setOrganizationId} options={workspace.organizations.map((item) => ({ value: item.id, label: item.name }))} disabled={workspace.user.role === "user"} />
+          {workspace.user.role === "user" ? (
+            organization?.photoUrl && (
+              <span className="workspace-org-badge" title={organization.name}>
+                <img src={organization.photoUrl} alt={organization.name} />
+              </span>
+            )
+          ) : (
+            <LabeledSelect label="Organización" value={organizationId} onChange={setOrganizationId} options={workspace.organizations.map((item) => ({ value: item.id, label: item.name }))} />
+          )}
           <LabeledSelect label="Proyecto" value={projectId} onChange={setProjectId} options={availableProjects.map((item) => ({ value: item.id, label: item.name }))} />
           {view === "concerts" && (
             <>
@@ -387,9 +398,20 @@ export function IntelligenceDashboard() {
           )}
         </div>
       </div>
+      )}
 
       <div className="intelligence-content">
-        {view === "concerts" ? (
+        {view === "settings" ? (
+          workspace.user.role === "admin" && (
+            <SettingsView
+              organizations={workspace.organizations}
+              currentUser={workspace.user}
+              onOrganizationUpdated={(org) => setWorkspace((current) => current
+                ? { ...current, organizations: current.organizations.map((item) => item.id === org.id ? org : item) }
+                : current)}
+            />
+          )
+        ) : view === "concerts" ? (
           <ConcertsView
             organizationId={organizationId}
             projectId={projectId}
@@ -405,6 +427,9 @@ export function IntelligenceDashboard() {
             endDate={customEndDate}
             onArtistUpdated={(artist) => setWorkspace((current) => current
               ? { ...current, artists: current.artists.map((item) => item.id === artist.id ? artist : item) }
+              : current)}
+            onArtistDeleted={(deletedArtistId) => setWorkspace((current) => current
+              ? { ...current, artists: current.artists.filter((item) => item.id !== deletedArtistId) }
               : current)}
             onConcertUpdated={(concert) => setWorkspace((current) => current
               ? { ...current, concerts: current.concerts.map((item) => item.id === concert.id ? concert : item) }

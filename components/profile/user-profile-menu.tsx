@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef } from "react";
-import { Building2, Check, LogOut, ShieldCheck, UserRound, X } from "lucide-react";
+import { Building2, Check, LogOut, Settings, ShieldCheck, UserRound, X } from "lucide-react";
 import type { AppUser } from "@/lib/domain/analytics";
 import { getFirebaseAuth, isFirebaseAuthEnabled } from "@/lib/firebase/client";
 
@@ -11,9 +11,10 @@ interface UserProfileMenuProps {
   organizationCount: number;
   projectCount: number;
   campaignCount: number;
+  onOpenSettings?: () => void;
 }
 
-export function UserProfileMenu({ user, organizationName, organizationCount, projectCount, campaignCount }: UserProfileMenuProps) {
+export function UserProfileMenu({ user, organizationName, organizationCount, projectCount, campaignCount, onOpenSettings }: UserProfileMenuProps) {
   const panelRef = useRef<HTMLElement>(null);
   const initials = user.name.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase();
   const admin = user.role === "admin";
@@ -60,6 +61,18 @@ export function UserProfileMenu({ user, organizationName, organizationCount, pro
               <div><dt>Campañas</dt><dd>{campaignCount}</dd></div>
             </dl>
           </div>
+
+          {admin && onOpenSettings && (
+            <button
+              className="profile-manage-users"
+              onClick={() => {
+                panelRef.current?.hidePopover();
+                onOpenSettings();
+              }}
+            >
+              <Settings className="size-4" />Ajustes
+            </button>
+          )}
 
           {isFirebaseAuthEnabled() ? (
             <button className="profile-signout" onClick={signOut}><LogOut className="size-4" />Cerrar sesión</button>
