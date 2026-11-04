@@ -66,19 +66,13 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Selecciona una organización para un usuario cliente" }, { status: 400 });
     }
 
-    const { getFirebaseAdminAuth } = await import("@/lib/firebase/admin");
-    const adminAuth = await getFirebaseAdminAuth();
+    const { createFirebaseUser } = await import("@/lib/firebase/auth-rest");
     let uid: string;
     try {
-      const created = await adminAuth.createUser({
-        email: parsed.data.email,
-        displayName: parsed.data.name,
-        emailVerified: false,
-      });
+      const created = await createFirebaseUser({ email: parsed.data.email, displayName: parsed.data.name });
       uid = created.uid;
     } catch (authError) {
-      const code = (authError as { code?: string }).code;
-      if (code === "auth/email-already-exists") {
+      if (authError instanceof Error && authError.message === "auth/email-already-exists") {
         return NextResponse.json({ error: "Ya existe una cuenta con ese correo" }, { status: 409 });
       }
       throw authError;
@@ -131,13 +125,11 @@ export async function PATCH(request: Request) {
     }
 
     if (parsed.data.name) {
-      const { getFirebaseAdminAuth } = await import("@/lib/firebase/admin");
-      const adminAuth = await getFirebaseAdminAuth();
+      const { updateFirebaseUserDisplayName } = await import("@/lib/firebase/auth-rest");
       try {
-        await adminAuth.updateUser(parsed.data.uid, { displayName: parsed.data.name });
+        await updateFirebaseUserDisplayName(parsed.data.uid, parsed.data.name);
       } catch (authError) {
-        const code = (authError as { code?: string }).code;
-        if (code !== "auth/user-not-found") throw authError;
+        if (!(authError instanceof Error && authError.message === "auth/user-not-found")) throw authError;
       }
     }
 
@@ -171,13 +163,11 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: "No puedes borrar tu propia cuenta desde aquí" }, { status: 409 });
     }
 
-    const { getFirebaseAdminAuth } = await import("@/lib/firebase/admin");
-    const adminAuth = await getFirebaseAdminAuth();
+    const { deleteFirebaseUser } = await import("@/lib/firebase/auth-rest");
     try {
-      await adminAuth.deleteUser(uid);
+      await deleteFirebaseUser(uid);
     } catch (authError) {
-      const code = (authError as { code?: string }).code;
-      if (code !== "auth/user-not-found") throw authError;
+      if (!(authError instanceof Error && authError.message === "auth/user-not-found")) throw authError;
     }
 
     const { deleteFirestoreDocument, firebaseIdToken } = await firestoreHelpers(request);
