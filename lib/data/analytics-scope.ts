@@ -40,9 +40,14 @@ function campaignScope(data: Record<string, unknown> | undefined): CampaignAnaly
  * Firebase owns tenancy/access; BigQuery only knows clients and ad-platform ids.
  */
 export async function resolveAnalyticsScope(query: AnalyticsQuery, firebaseIdToken?: string): Promise<AnalyticsScope> {
-  const [organization, project] = await Promise.all([
+  // The campaign(s) lookup is keyed only by query ids, not by organization/
+  // project's results, so it goes out in the same wave instead of waiting.
+  const [organization, project, campaignOrCampaigns] = await Promise.all([
     getFirestoreDocument("organizations", query.organizationId, firebaseIdToken),
     getFirestoreDocument("projects", query.projectId, firebaseIdToken),
+    query.campaignId
+      ? getFirestoreDocument("campaigns", query.campaignId, firebaseIdToken)
+      : queryFirestoreDocuments("campaigns", "projectId", query.projectId, firebaseIdToken),
   ]);
 
   if (!organization.exists || !project.exists) throw new Error("ANALYTICS_SCOPE_NOT_FOUND");
@@ -54,7 +59,7 @@ export async function resolveAnalyticsScope(query: AnalyticsQuery, firebaseIdTok
   if (!clientId) throw new Error("ANALYTICS_CLIENT_NOT_CONFIGURED");
 
   if (query.campaignId) {
-    const campaign = await getFirestoreDocument("campaigns", query.campaignId, firebaseIdToken);
+    const campaign = campaignOrCampaigns as Awaited<ReturnType<typeof getFirestoreDocument>>;
     if (!campaign.exists || requiredString(campaign.data.projectId) !== query.projectId) {
       throw new Error("ANALYTICS_CAMPAIGN_NOT_FOUND");
     }
@@ -63,7 +68,7 @@ export async function resolveAnalyticsScope(query: AnalyticsQuery, firebaseIdTok
     return { clientId, campaigns: [scope] };
   }
 
-  const campaigns = await queryFirestoreDocuments("campaigns", "projectId", query.projectId, firebaseIdToken);
+  const campaigns = campaignOrCampaigns as Awaited<ReturnType<typeof queryFirestoreDocuments>>;
   const scopes = campaigns
     .map((document) => campaignScope(document.data))
     .filter((scope): scope is CampaignAnalyticsScope => scope !== null);
@@ -86,9 +91,15 @@ export interface ConcertAnalyticsScope {
  * concert under that artist (the combined multi-date summary).
  */
 export async function resolveConcertScope(query: ConcertQuery, firebaseIdToken?: string): Promise<ConcertAnalyticsScope> {
-  const [organization, project] = await Promise.all([
+  // Every read below is keyed only by the incoming query ids, not by any
+  // other read's result, so they all go out in one wave instead of waiting
+  // on organization/project before even starting the concert lookup.
+  const [organization, project, concertOrConcerts] = await Promise.all([
     getFirestoreDocument("organizations", query.organizationId, firebaseIdToken),
     getFirestoreDocument("projects", query.projectId, firebaseIdToken),
+    query.concertId
+      ? getFirestoreDocument("concerts", query.concertId, firebaseIdToken)
+      : queryFirestoreDocuments("concerts", "artistId", query.artistId, firebaseIdToken),
   ]);
 
   if (!organization.exists || !project.exists) throw new Error("ANALYTICS_SCOPE_NOT_FOUND");
@@ -100,7 +111,7 @@ export async function resolveConcertScope(query: ConcertQuery, firebaseIdToken?:
   if (!clientId) throw new Error("ANALYTICS_CLIENT_NOT_CONFIGURED");
 
   if (query.concertId) {
-    const concert = await getFirestoreDocument("concerts", query.concertId, firebaseIdToken);
+    const concert = concertOrConcerts as Awaited<ReturnType<typeof getFirestoreDocument>>;
     if (!concert.exists || requiredString(concert.data.projectId) !== query.projectId || requiredString(concert.data.artistId) !== query.artistId) {
       throw new Error("ANALYTICS_CONCERT_NOT_FOUND");
     }
@@ -116,7 +127,7 @@ export async function resolveConcertScope(query: ConcertQuery, firebaseIdToken?:
 
   // Firestore REST queries only filter on one field; narrow by artistId and
   // verify projectId in memory rather than adding a compound index.
-  const concerts = await queryFirestoreDocuments("concerts", "artistId", query.artistId, firebaseIdToken);
+  const concerts = concertOrConcerts as Awaited<ReturnType<typeof queryFirestoreDocuments>>;
   const matchingConcerts = concerts.filter((document) => requiredString(document.data.projectId) === query.projectId);
   const namePatterns = matchingConcerts.flatMap((document) => concertNamePatterns(document.data));
   const excludedCampaignIds = matchingConcerts.flatMap((document) => concertExcludedCampaignIds(document.data));

@@ -442,6 +442,12 @@ export class BigQueryAnalyticsRepository implements AnalyticsRepository {
     previousStart.setUTCDate(previousEnd.getUTCDate() - days + 1);
     if (query.range === "all") previousStart.setTime(start.getTime());
 
+    // Doesn't depend on scope/clientId — only on projectId, already known —
+    // so it's kicked off now and only awaited later, right before it's
+    // needed for topEvents/topAds, overlapping it with the scope resolution
+    // and the main query below instead of paying for it afterward.
+    const concertScopePromise = resolveProjectConcertScope({ projectId: query.projectId }, context?.firestoreToken);
+
     const scope = await resolveAnalyticsScope(query, context?.firestoreToken);
     const params = {
       clientId: scope.clientId,
@@ -565,7 +571,7 @@ export class BigQueryAnalyticsRepository implements AnalyticsRepository {
     let topEvents: EventPerformance[] = [];
     let topAds: AdPerformance[] = [];
     try {
-      const concerts = await resolveProjectConcertScope({ projectId: query.projectId }, context?.firestoreToken);
+      const concerts = await concertScopePromise;
       const eventParams = { clientId: scope.clientId, startDate: params.startDate, endDate: params.endDate, concerts };
       [topEvents, topAds] = await Promise.all([this.projectEvents(eventParams), this.projectTopAds(eventParams)]);
     } catch (error) {
@@ -656,9 +662,11 @@ export class BigQueryAnalyticsRepository implements AnalyticsRepository {
       },
     ];
 
-    let creativeRows: ConcertCreativeRow[] = [];
-    try {
-      creativeRows = await this.rows<ConcertCreativeRow>(`SELECT
+    // Neither query depends on the other's result (both are only scoped by
+    // clientId/patterns/dates), so they go out together instead of waiting
+    // on creativeRows before even starting the metrics query.
+    const [creativeRowsResult, metricsRowsResult] = await Promise.allSettled([
+      this.rows<ConcertCreativeRow>(`SELECT
         source,
         campaign_id,
         campaign_name,
@@ -670,20 +678,8 @@ export class BigQueryAnalyticsRepository implements AnalyticsRepository {
       FROM \`${this.creativesView}\`
       WHERE client_id = @clientId
         AND source != 'google_ads'
-        AND ${patternFilter}`, patternParams);
-    } catch (error) {
-      console.error("[bigquery] concert creatives query failed", error);
-      return empty;
-    }
-    if (!creativeRows.length) return empty;
-
-    // Metrics are for this specific ad within the selected range, not a
-    // lifetime total — same date window as the main campaign query.
-    // billed_spend (not spend) is what cost-per-conversion is based on, same
-    // agency markup used everywhere else in the app.
-    const metricsByAd = new Map<string, { billedSpend: number; impressions: number; linkClicks: number; conversions: number }>();
-    try {
-      const metricsRows = await this.rows<AdMetricsRow>(`SELECT
+        AND ${patternFilter}`, patternParams),
+      this.rows<AdMetricsRow>(`SELECT
         ad_id,
         SUM(billed_spend) AS billed_spend,
         SUM(impressions) AS impressions,
@@ -697,8 +693,23 @@ export class BigQueryAnalyticsRepository implements AnalyticsRepository {
         ...patternParams,
         { name: "startDate", parameterType: { type: "STRING" }, parameterValue: { value: params.startDate } },
         { name: "endDate", parameterType: { type: "STRING" }, parameterValue: { value: params.endDate } },
-      ]);
-      for (const row of metricsRows) {
+      ]),
+    ]);
+
+    if (creativeRowsResult.status === "rejected") {
+      console.error("[bigquery] concert creatives query failed", creativeRowsResult.reason);
+      return empty;
+    }
+    const creativeRows = creativeRowsResult.value;
+    if (!creativeRows.length) return empty;
+
+    // Metrics are for this specific ad within the selected range, not a
+    // lifetime total — same date window as the main campaign query.
+    // billed_spend (not spend) is what cost-per-conversion is based on, same
+    // agency markup used everywhere else in the app.
+    const metricsByAd = new Map<string, { billedSpend: number; impressions: number; linkClicks: number; conversions: number }>();
+    if (metricsRowsResult.status === "fulfilled") {
+      for (const row of metricsRowsResult.value) {
         metricsByAd.set(row.ad_id, {
           billedSpend: number(row.billed_spend),
           impressions: number(row.impressions),
@@ -706,8 +717,8 @@ export class BigQueryAnalyticsRepository implements AnalyticsRepository {
           conversions: number(row.conversions),
         });
       }
-    } catch (error) {
-      console.error("[bigquery] concert ad metrics query failed", error);
+    } else {
+      console.error("[bigquery] concert ad metrics query failed", metricsRowsResult.reason);
     }
 
     for (const row of creativeRows) {
@@ -852,7 +863,13 @@ export class BigQueryAnalyticsRepository implements AnalyticsRepository {
     // across dates and campaigns, the per-campaign breakdown sums across
     // dates, the trend sums across sources and campaigns, and the total sums
     // everything — all derived from this one row set, so they never disagree.
-    const rows = await this.rows<ConcertRow>(`SELECT
+    //
+    // This query and the six below (creatives + 5 segment breakdowns) are
+    // all independent — none consumes another's result, they just share the
+    // same clientId/pattern/date params — so they're fired together instead
+    // of waiting on this one to finish before even starting the rest. That
+    // turns ~7 sequential BigQuery round-trips into one parallel wave.
+    const rowsPromise = this.rows<ConcertRow>(`SELECT
       date,
       source,
       campaign_id,
@@ -875,6 +892,16 @@ export class BigQueryAnalyticsRepository implements AnalyticsRepository {
       ${EXCLUDE_CAMPAIGN_CLAUSE}
     GROUP BY date, source, campaign_id
     ORDER BY date`, concertQueryParameters(params));
+
+    const [rows, { byCampaign: creativesByCampaign }, deviceBreakdown, geoBreakdown, ageBreakdown, genderBreakdown, publisherPlatformBreakdown] = await Promise.all([
+      rowsPromise,
+      this.concertCreatives(params),
+      this.concertSegmentBreakdown(this.deviceView, "device", params),
+      this.concertSegmentBreakdown(this.geoView, "geo", params),
+      this.concertSegmentBreakdown(this.demographicsView, "age", params),
+      this.concertSegmentBreakdown(this.demographicsView, "gender", params),
+      this.concertSegmentBreakdown(this.platformView, "platform", params),
+    ]);
 
     // An event can be covered only by manually reported sources (no ad
     // campaigns yet), so an empty BigQuery result is only "no data" without them.
@@ -959,14 +986,6 @@ export class BigQueryAnalyticsRepository implements AnalyticsRepository {
       combined.conversions += source.conversions ?? 0;
     }
 
-    const { byCampaign: creativesByCampaign } = await this.concertCreatives(params);
-    const [deviceBreakdown, geoBreakdown, ageBreakdown, genderBreakdown, publisherPlatformBreakdown] = await Promise.all([
-      this.concertSegmentBreakdown(this.deviceView, "device", params),
-      this.concertSegmentBreakdown(this.geoView, "geo", params),
-      this.concertSegmentBreakdown(this.demographicsView, "age", params),
-      this.concertSegmentBreakdown(this.demographicsView, "gender", params),
-      this.concertSegmentBreakdown(this.platformView, "platform", params),
-    ]);
     const campaignsBySource = new Map<string, ConcertCampaignBreakdown[]>();
     for (const campaign of byCampaign.values()) {
       const list = campaignsBySource.get(campaign.source) ?? [];

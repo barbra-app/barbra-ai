@@ -460,13 +460,15 @@ export function IntelligenceDashboard() {
               </div>
             </section>
 
-            {issue?.kind === "empty" ? (
+            {loading ? (
+              <DashboardSkeleton />
+            ) : issue?.kind === "empty" ? (
               <DashboardEmptyState
                 range={range}
                 onTryAllTime={() => setRange("all")}
               />
             ) : issue?.kind === "error" ? <DashboardError message={issue.message} /> : !snapshot ? <DashboardSkeleton /> : (
-              <div className={loading ? "is-refreshing" : undefined}>
+              <div>
                 <section className="kpi-grid" aria-label="Métricas críticas">
                   {snapshot.metrics.filter((metric) => CRITICAL_METRICS.has(metric.id)).map((metric) => (
                     <KpiCard key={metric.id} metric={metric} currency={snapshot.currency} />

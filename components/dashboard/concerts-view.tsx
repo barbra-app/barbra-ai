@@ -21,6 +21,7 @@ import {
   YAxis,
 } from "recharts";
 import { EditEventDialog } from "@/components/dashboard/edit-event-dialog";
+import { DashboardSkeleton } from "@/components/dashboard/intelligence-dashboard-skeleton";
 import { LabeledSelect } from "@/components/dashboard/labeled-select";
 import { ManualSourceDialog } from "@/components/dashboard/manual-source-dialog";
 import type { Artist, Campaign, Concert, ConcertEvidencePhoto, ConcertManualSource,ConcertMetricKey, ConcertPlatformBreakdown, ConcertPlatformTrendPoint, ConcertSegmentBreakdown, ConcertSummary, DateRange } from "@/lib/domain/analytics";
@@ -290,8 +291,10 @@ export function ConcertsView({
             <p>{error}</p>
           </div>
         </div>
+      ) : loading ? (
+        <DashboardSkeleton />
       ) : summary ? (
-        <div className={loading ? "is-refreshing" : undefined}>
+        <div>
           <section className="kpi-grid kpi-grid-5" aria-label="Métricas del concierto">
             <ConcertKpi label="Impresiones" value={formatNumber(summary.total.impressions)} />
             <ConcertKpi label="Clics" value={formatNumber(summary.total.clicks)} />
@@ -452,9 +455,7 @@ export function ConcertsView({
           />
         </div>
       ) : artists.length > 0 ? (
-        <div className="dashboard-skeleton">
-          <div className="skeleton-kpis">{Array.from({ length: 4 }, (_, index) => <span key={index} />)}</div>
-        </div>
+        <DashboardSkeleton />
       ) : null}
 
       {isAdmin && (
