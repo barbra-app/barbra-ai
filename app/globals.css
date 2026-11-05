@@ -152,7 +152,6 @@ button:disabled { cursor: not-allowed; opacity: 0.55; background-color: var(--co
 .data-status { display: flex; align-items: center; gap: var(--space-2); color: var(--color-muted); font-size: var(--text-xs); }
 .data-status > span, .status-dot { width: 0.45rem; height: 0.45rem; flex: 0 0 auto; border-radius: 50%; background: var(--color-positive); }
 .data-status.is-neutral > span { background: var(--color-subtle); }
-.is-refreshing { opacity: 0.56; transition: opacity var(--dur-fast) var(--ease-out); }
 
 .kpi-grid { display: grid; gap: var(--space-3); }
 .kpi-card { min-width: 0; padding: var(--space-4); border: var(--rule); border-radius: var(--radius-card); background: var(--color-surface); }
