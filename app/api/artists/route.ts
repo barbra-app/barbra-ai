@@ -47,6 +47,20 @@ export async function POST(request: Request) {
       ...(photoUrl ? { photoUrl } : {}),
     }, firebaseIdToken);
 
+    try {
+      await createFirestoreDocument("notifications", {
+        organizationId: parsed.data.organizationId,
+        createdBy: user.uid,
+        type: "artist_created",
+        title: "Nuevo artista",
+        message: `Se agregó el artista "${parsed.data.displayName}"`,
+        createdAt: new Date().toISOString(),
+        readBy: [],
+      }, firebaseIdToken);
+    } catch (notificationError) {
+      console.error("[artists] notification create failed", notificationError);
+    }
+
     return NextResponse.json(
       { data: { id: doc.id, projectId: parsed.data.projectId, displayName: parsed.data.displayName, photoUrl } },
       { status: 201 },

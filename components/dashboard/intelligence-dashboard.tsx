@@ -35,6 +35,7 @@ import { ConcertsView } from "@/components/dashboard/concerts-view";
 import { DashboardSkeleton, IntelligenceDashboardSkeleton } from "@/components/dashboard/intelligence-dashboard-skeleton";
 import { LabeledSelect } from "@/components/dashboard/labeled-select";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
+import { NotificationsButton } from "@/components/notifications/notifications-button";
 import { UserProfileMenu } from "@/components/profile/user-profile-menu";
 import { SettingsView } from "@/components/dashboard/settings-view";
 import {
@@ -309,14 +310,7 @@ export function IntelligenceDashboard() {
         </nav>
 
         <div className="topbar-actions">
-          <button
-            className="advisor-shortcut"
-            onClick={() => setAdvisorOpen((open) => !open)}
-            aria-expanded={advisorOpen}
-            aria-controls="advisor-panel"
-          >
-            <Sparkles className="size-4" /><span>Consultar</span>
-          </button>
+          <NotificationsButton />
           <ThemeToggle />
           <UserProfileMenu
             user={workspace.user}
