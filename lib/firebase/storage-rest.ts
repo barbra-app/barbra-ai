@@ -4,6 +4,26 @@ import { googleAccessToken } from "@/lib/google/access-token";
 const MAX_UPLOAD_BYTES = 5 * 1024 * 1024; // 5MB — plenty for a profile/event photo.
 const ALLOWED_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 
+// Cards never render these larger than this, so anything wider just adds
+// weight with no visible benefit. Quality 85 keeps re-compression artifacts
+// invisible at normal viewing sizes.
+const MAX_DIMENSION_PX = 1920;
+const JPEG_QUALITY = 85;
+
+async function optimizeImage(file: File): Promise<Buffer> {
+  const sharp = (await import("sharp")).default;
+  const image = sharp(Buffer.from(await file.arrayBuffer())).rotate();
+  const metadata = await image.metadata();
+  const resized =
+    (metadata.width ?? 0) > MAX_DIMENSION_PX || (metadata.height ?? 0) > MAX_DIMENSION_PX
+      ? image.resize({ width: MAX_DIMENSION_PX, height: MAX_DIMENSION_PX, fit: "inside", withoutEnlargement: true })
+      : image;
+
+  if (file.type === "image/png") return resized.png({ quality: JPEG_QUALITY, compressionLevel: 9 }).toBuffer();
+  if (file.type === "image/webp") return resized.webp({ quality: JPEG_QUALITY }).toBuffer();
+  return resized.jpeg({ quality: JPEG_QUALITY, mozjpeg: true }).toBuffer();
+}
+
 async function accessToken() {
   let raw = await runtimeEnv("FIREBASE_SERVICE_ACCOUNT_JSON");
   const file = await runtimeEnv("FIREBASE_SERVICE_ACCOUNT_FILE");
@@ -27,14 +47,14 @@ export async function uploadPublicImage(path: string, file: File): Promise<strin
   if (!ALLOWED_TYPES.has(file.type)) throw new Error("STORAGE_UNSUPPORTED_TYPE");
   if (file.size > MAX_UPLOAD_BYTES) throw new Error("STORAGE_FILE_TOO_LARGE");
 
-  const [token, bucketName] = await Promise.all([accessToken(), bucket()]);
+  const [token, bucketName, optimized] = await Promise.all([accessToken(), bucket(), optimizeImage(file)]);
   const downloadToken = crypto.randomUUID();
   const boundary = crypto.randomUUID();
   const metadata = JSON.stringify({ name: path, metadata: { firebaseStorageDownloadTokens: downloadToken } });
   const body = new Blob([
     `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${metadata}\r\n`,
     `--${boundary}\r\nContent-Type: ${file.type}\r\n\r\n`,
-    await file.arrayBuffer(),
+    new Uint8Array(optimized),
     `\r\n--${boundary}--`,
   ]);
 

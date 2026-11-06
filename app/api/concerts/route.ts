@@ -138,6 +138,20 @@ export async function POST(request: Request) {
       ...(parsed.data.eventDate ? { eventDate: parsed.data.eventDate } : {}),
     }, firebaseIdToken);
 
+    try {
+      await createFirestoreDocument("notifications", {
+        organizationId: parsed.data.organizationId,
+        createdBy: user.uid,
+        type: "concert_created",
+        title: "Nuevo evento",
+        message: `Se creó el evento "${parsed.data.displayName}" para ${String(artist.data.displayName ?? "un artista")}`,
+        createdAt: new Date().toISOString(),
+        readBy: [],
+      }, firebaseIdToken);
+    } catch (notificationError) {
+      console.error("[concerts] notification create failed", notificationError);
+    }
+
     return NextResponse.json(
       {
         data: {

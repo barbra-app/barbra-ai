@@ -56,6 +56,13 @@ service cloud.firestore {
       allow write: if isAdmin() && canAccessProject(request.resource.data.projectId);
     }
 
+    match /notifications/{notificationId} {
+      allow read: if belongsToOrganization(resource.data.organizationId);
+      allow create: if isAdmin() && belongsToOrganization(request.resource.data.organizationId);
+      allow update: if belongsToOrganization(resource.data.organizationId)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['readBy']);
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }

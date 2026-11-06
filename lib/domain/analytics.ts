@@ -80,6 +80,15 @@ export interface Concert {
   manualSources?: ConcertManualSource[];
 }
 
+export interface AppNotification {
+  id: string;
+  type: "concert_created" | "artist_created";
+  title: string;
+  message: string;
+  createdAt: string;
+  read: boolean;
+}
+
 export interface AppUser {
   uid: string;
   name: string;
