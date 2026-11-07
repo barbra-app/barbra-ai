@@ -1023,4 +1023,20 @@ export class BigQueryAnalyticsRepository implements AnalyticsRepository {
       publisherPlatformBreakdown,
     };
   }
+
+  // Recent campaigns for this client that don't match any configured
+  // concert's namePatterns — a sign of a new show not yet created in the
+  // app, surfaced to admins as a notification instead of going unnoticed.
+  async findUnmappedCampaigns(params: { clientId: string; namePatterns: string[] }) {
+    const rows = await this.rows<{ campaign_name: string; source: string }>(`
+      SELECT DISTINCT campaign_name, source
+      FROM \`${this.view}\`
+      WHERE client_id = @clientId
+        AND date >= DATE_SUB(CURRENT_DATE(), INTERVAL 14 DAY)
+    `, [{ name: "clientId", parameterType: { type: "STRING" }, parameterValue: { value: params.clientId } }]);
+
+    return rows
+      .filter((row) => row.campaign_name && !matchesConcert(row.campaign_name, params.namePatterns))
+      .map((row) => ({ campaignName: row.campaign_name.trim(), source: row.source }));
+  }
 }

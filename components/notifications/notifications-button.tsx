@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Bell, BellOff, Megaphone, Mic2, X } from "lucide-react";
+import { AlertTriangle, Bell, BellOff, Megaphone, Mic2, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getFirebaseIdToken } from "@/lib/firebase/client";
 import type { AppNotification } from "@/lib/domain/analytics";
@@ -65,7 +65,13 @@ export function NotificationsButton() {
               <li key={item.id} className={cn("notifications-item", !item.read && "unread")}>
                 <button onClick={() => markRead(item.id)}>
                   <span className="notifications-item-icon">
-                    {item.type === "artist_created" ? <Mic2 className="size-4" /> : <Megaphone className="size-4" />}
+                    {item.type === "artist_created" ? (
+                      <Mic2 className="size-4" />
+                    ) : item.type === "unmapped_campaign" ? (
+                      <AlertTriangle className="size-4" />
+                    ) : (
+                      <Megaphone className="size-4" />
+                    )}
                   </span>
                   <span className="notifications-item-body">
                     <strong>{item.title}</strong>
