@@ -26,6 +26,13 @@ export async function GET(request: Request) {
     const user = await getRequestUser(request);
     const { listFirestoreDocuments, queryFirestoreDocuments, firebaseIdToken } = await firestoreHelpers(request);
 
+    if (user.role === "admin") {
+      const { checkUnmappedCampaignsForAllOrganizations } = await import("@/lib/data/unmapped-campaigns-check");
+      await checkUnmappedCampaignsForAllOrganizations(firebaseIdToken).catch((error) => {
+        console.error("[notifications] unmapped-campaigns check failed", error);
+      });
+    }
+
     const docs = user.role === "admin"
       ? await listFirestoreDocuments("notifications", firebaseIdToken)
       : user.organizationId
@@ -34,11 +41,12 @@ export async function GET(request: Request) {
 
     const data: AppNotification[] = docs
       .filter((doc) => doc.exists && doc.data.createdBy !== user.uid)
+      .filter((doc) => user.role === "admin" || doc.data.type !== "unmapped_campaign")
       .map((doc) => {
         const readBy = Array.isArray(doc.data.readBy) ? doc.data.readBy.map(String) : [];
         return {
           id: doc.id,
-          type: doc.data.type === "artist_created" ? "artist_created" : "concert_created",
+          type: doc.data.type === "artist_created" ? "artist_created" : doc.data.type === "unmapped_campaign" ? "unmapped_campaign" : "concert_created",
           title: String(doc.data.title ?? ""),
           message: String(doc.data.message ?? ""),
           createdAt: String(doc.data.createdAt ?? ""),

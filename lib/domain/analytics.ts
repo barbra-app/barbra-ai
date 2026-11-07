@@ -82,7 +82,7 @@ export interface Concert {
 
 export interface AppNotification {
   id: string;
-  type: "concert_created" | "artist_created";
+  type: "concert_created" | "artist_created" | "unmapped_campaign";
   title: string;
   message: string;
   createdAt: string;
