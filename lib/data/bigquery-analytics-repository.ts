@@ -1,6 +1,6 @@
 import type { AnalyticsRepository } from "@/lib/data/analytics-repository";
 import { humanizeCampaignName } from "@/lib/campaign-name";
-import { matchesConcert } from "@/lib/campaign-matching";
+import { matchesConcert, normalizePattern } from "@/lib/campaign-matching";
 import { resolveAnalyticsScope, resolveConcertScope, resolveProjectConcertScope, type CampaignAnalyticsScope, type ProjectEventScope } from "@/lib/data/analytics-scope";
 import { googleAccessToken } from "@/lib/google/access-token";
 import type {
@@ -334,7 +334,7 @@ function escapeRegExp(input: string) {
 }
 
 function anchoredPattern(rawPrefix: string) {
-  return `(?i)^${escapeRegExp(rawPrefix.trim())}($|[_ ])`;
+  return `(?i)^${escapeRegExp(normalizePattern(rawPrefix))}($|[_ ])`;
 }
 
 // matchesConcert() (same anchoring, as a plain JS RegExp instead of a
