@@ -20,6 +20,7 @@
     "ai": "^6.0.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "exceljs": "^4.4.0",
     "firebase": "^12.16.0",
     "firebase-admin": "^14.2.0",
     "jose": "^6.2.4",
@@ -56,9 +57,16 @@
       "workerd"
     ],
     "supportedArchitectures": {
-      "os": ["win32", "linux"],
-      "cpu": ["x64"],
-      "libc": ["glibc"]
+      "os": [
+        "win32",
+        "linux"
+      ],
+      "cpu": [
+        "x64"
+      ],
+      "libc": [
+        "glibc"
+      ]
     }
   },
   "type": "module"

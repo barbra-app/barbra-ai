@@ -26,6 +26,7 @@ export function EditEventDialog({
   onArtistUpdated,
   onArtistDeleted,
   onConcertUpdated,
+  onConcertDeleted,
 }: {
   dialogRef: React.RefObject<HTMLDialogElement | null>;
   organizationId: string;
@@ -35,6 +36,7 @@ export function EditEventDialog({
   onArtistUpdated: (artist: Artist) => void;
   onConcertUpdated: (concert: Concert) => void;
   onArtistDeleted?: (artistId: string) => void;
+  onConcertDeleted?: (concertId: string) => void;
 }) {
   const [artistName, setArtistName] = useState(artist?.displayName ?? "");
   const [artistPhoto, setArtistPhoto] = useState<File | undefined>();
@@ -49,6 +51,7 @@ export function EditEventDialog({
   const [eventPhoto, setEventPhoto] = useState<File | undefined>();
   const [concertSubmitting, setConcertSubmitting] = useState(false);
   const [concertError, setConcertError] = useState<string | null>(null);
+  const [concertDeleting, setConcertDeleting] = useState(false);
 
   // Re-sync the form whenever the dialog is pointed at a different artist or
   // concert (a different selection was made, or the dialog re-opened).
@@ -163,6 +166,33 @@ export function EditEventDialog({
     }
   }
 
+  async function deleteConcert() {
+    if (!concert) return;
+    const confirmed = await confirm(
+      `¿Borrar el evento "${concert.displayName}"? Esta acción no se puede deshacer.`,
+      "Borrar evento",
+    );
+    if (!confirmed) return;
+    setConcertDeleting(true);
+    setConcertError(null);
+    try {
+      const token = await getFirebaseIdToken();
+      const params = new URLSearchParams({ id: concert.id, organizationId, projectId });
+      const response = await fetch(`/api/concerts?${params}`, {
+        method: "DELETE",
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error ?? "No fue posible borrar el evento");
+      onConcertDeleted?.(concert.id);
+      dialogRef.current?.close();
+    } catch (reason) {
+      setConcertError(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      setConcertDeleting(false);
+    }
+  }
+
   if (!artist) return null;
 
   return (
@@ -219,13 +249,25 @@ export function EditEventDialog({
               <span>Patrones de nombre de campaña</span>
               <NamePatternsInput value={namePatterns} onChange={setNamePatterns} />
             </label>
-            <button
-              className="auth-submit event-form-submit"
-              type="submit"
-              disabled={concertSubmitting || !concertName.trim() || !namePatterns.length}
-            >
-              {concertSubmitting ? "Guardando…" : "Guardar evento"}
-            </button>
+            <div className="artist-form-actions">
+              <button
+                className="auth-submit"
+                type="submit"
+                disabled={concertSubmitting || !concertName.trim() || !namePatterns.length}
+              >
+                {concertSubmitting ? "Guardando…" : "Guardar evento"}
+              </button>
+              <button
+                type="button"
+                className="artist-delete-button"
+                onClick={deleteConcert}
+                disabled={concertDeleting}
+                aria-label="Borrar evento"
+                title="Borrar evento"
+              >
+                {concertDeleting ? "Borrando…" : "Borrar evento"}
+              </button>
+            </div>
             {concertError && <small className="auth-error" aria-live="polite">{concertError}</small>}
           </form>
         )}

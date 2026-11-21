@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import { Check, ChevronDown, Info, MoreVertical, Pencil, Plus, X } from "lucide-react";
+import { Check, ChevronDown, Download, Info, MoreVertical, Pencil, Plus, X } from "lucide-react";
 import { useConfirmDialog } from "./confirm-dialog";
 import {
   Area,
@@ -26,14 +26,9 @@ import { LabeledSelect } from "@/components/dashboard/labeled-select";
 import { ManualSourceDialog } from "@/components/dashboard/manual-source-dialog";
 import type { Artist, Campaign, Concert, ConcertEvidencePhoto, ConcertManualSource,ConcertMetricKey, ConcertPlatformBreakdown, ConcertPlatformTrendPoint, ConcertSegmentBreakdown, ConcertSummary, DateRange } from "@/lib/domain/analytics";
 import { getFirebaseIdToken } from "@/lib/firebase/client";
+import { downloadConcertWorkbook } from "@/lib/export/concert-workbook";
+import { DEMOGRAPHICS_SOURCES, DEVICE_GEO_SOURCES, PLATFORM_BREAKDOWN_SOURCES, sourceLabel } from "@/lib/analytics/source-labels";
 import { cn, formatCurrency, formatNumber, formatPercent } from "@/lib/utils";
-
-const SOURCE_LABELS: Record<string, string> = {
-  google_ads: "Google Ads",
-  meta_ads: "Meta Ads",
-  tiktok_ads: "TikTok Ads",
-  dv360: "DV360",
-};
 
 function statusDot(status: string | undefined): "green" | "red" | "gray" | undefined {
   if (status === "active") return "green";
@@ -42,25 +37,30 @@ function statusDot(status: string | undefined): "green" | "red" | "gray" | undef
   return undefined;
 }
 
+const MANUAL_SOURCE_DATE_FORMAT = new Intl.DateTimeFormat("es-CO", { day: "numeric", month: "short", year: "numeric" });
+
+function formatManualSourceDate(isoDate: string) {
+  // ISO dates parse as UTC midnight — reconstruct in local time so the
+  // displayed day always matches what the admin typed, not the day before.
+  const [year, month, day] = isoDate.split("-").map(Number);
+  return MANUAL_SOURCE_DATE_FORMAT.format(new Date(year, month - 1, day));
+}
+
+function manualSourceDateRangeLabel(source: ConcertManualSource) {
+  if (source.startDate && source.endDate) {
+    return `${formatManualSourceDate(source.startDate)} – ${formatManualSourceDate(source.endDate)}`;
+  }
+  if (source.startDate) return `Desde ${formatManualSourceDate(source.startDate)}`;
+  if (source.endDate) return `Hasta ${formatManualSourceDate(source.endDate)}`;
+  return null;
+}
+
 const PLATFORM_COLORS = [
   "var(--color-chart-1)",
   "var(--color-chart-2)",
   "var(--color-chart-3)",
   "var(--color-chart-4)",
 ];
-
-// Which sources feed each segment breakdown — not every ad platform reports
-// every dimension (e.g. Pinterest has no device/geo/demographics breakdown
-// at all), so the info icon next to each chart tells people which numbers
-// they're actually looking at. Mirrors the source CTEs in each fact_*
-// breakdown Dataform definition — keep in sync if those change.
-const DEVICE_GEO_SOURCES = ["meta_ads", "google_ads", "tiktok_ads", "dv360"];
-const DEMOGRAPHICS_SOURCES = ["meta_ads", "google_ads", "tiktok_ads"];
-const PLATFORM_BREAKDOWN_SOURCES = ["meta_ads", "google_ads"];
-
-function sourceLabel(source: string) {
-  return SOURCE_LABELS[source] ?? source;
-}
 
 type SegmentMetricKey = "impressions" | "clicks" | "conversions" | "billedSpend";
 const SEGMENT_METRIC_OPTIONS: { value: SegmentMetricKey; label: string; format: "number" | "currency" }[] = [
@@ -162,6 +162,7 @@ export function ConcertsView({
   onArtistUpdated,
   onArtistDeleted,
   onConcertUpdated,
+  onConcertDeleted,
   onSummaryUpdated,
 }: {
   organizationId: string;
@@ -179,6 +180,7 @@ export function ConcertsView({
   onArtistUpdated: (artist: Artist) => void;
   onArtistDeleted?: (artistId: string) => void;
   onConcertUpdated: (concert: Concert) => void;
+  onConcertDeleted?: (concertId: string) => void;
   onSummaryUpdated?: (summary: ConcertSummary) => void;
 }) {
   const [summary, setSummary] = useState<ConcertSummary | null>(null);
@@ -271,15 +273,26 @@ export function ConcertsView({
               : "Aún no hay conciertos configurados para este proyecto"}
           </p>
         </div>
-        {isAdmin && activeArtist && (
+        {activeArtist && (isAdmin || (activeConcert && summary)) && (
           <div className="dashboard-hero-actions">
-            <button
-              type="button"
-              className="edit-event-button"
-              onClick={() => editEventDialogRef.current?.showModal()}
-            >
-              <Pencil className="size-4" />Editar
-            </button>
+            {activeConcert && summary && (
+              <button
+                type="button"
+                className="edit-event-button"
+                onClick={() => downloadConcertWorkbook(activeConcert, summary, visibleManualSources.map(({ source }) => source))}
+              >
+                <Download className="size-4" />Exportar
+              </button>
+            )}
+            {isAdmin && (
+              <button
+                type="button"
+                className="edit-event-button"
+                onClick={() => editEventDialogRef.current?.showModal()}
+              >
+                <Pencil className="size-4" />Editar
+              </button>
+            )}
           </div>
         )}
       </section>
@@ -386,6 +399,7 @@ export function ConcertsView({
                       <span className="segment-sources-popover concert-manual-popover">
                         <strong>Fuente manual · {source.active ? "activa" : "inactiva"}</strong>
                         {!activeConcert && <span>{concert.displayName}</span>}
+                        {manualSourceDateRangeLabel(source) && <span>{manualSourceDateRangeLabel(source)}</span>}
                         {source.notes ? <span className="concert-manual-notes">{source.notes}</span> : <span>Sin anotaciones.</span>}
                       </span>
                     </button>
@@ -429,13 +443,20 @@ export function ConcertsView({
             </section>
           )}
 
-          {(summary.deviceBreakdown.length > 0 || summary.publisherPlatformBreakdown.length > 0) && (
+          {(summary.deviceBreakdown.length > 0 || summary.publisherPlatformBreakdown.length > 0 || visibleManualSources.length > 0) && (
             <section className="analytics-grid is-thirds">
               {summary.deviceBreakdown.length > 0 && (
                 <ConcertSegmentTable title="Dispositivo" rows={summary.deviceBreakdown} currency={summary.currency} sources={DEVICE_GEO_SOURCES} chartType="donut" />
               )}
               {summary.publisherPlatformBreakdown.length > 0 && (
-                <ConcertPlatformFunnel rows={summary.publisherPlatformBreakdown} currency={summary.currency} />
+                <ConcertPlatformFunnel
+                  rows={summary.publisherPlatformBreakdown}
+                  currency={summary.currency}
+                  wide={visibleManualSources.length === 0}
+                />
+              )}
+              {visibleManualSources.length > 0 && (
+                <ManualSourcesChart sources={visibleManualSources} currency={summary.currency} showConcertName={!activeConcert} />
               )}
             </section>
           )}
@@ -468,6 +489,7 @@ export function ConcertsView({
           onArtistUpdated={onArtistUpdated}
           onArtistDeleted={onArtistDeleted}
           onConcertUpdated={onConcertUpdated}
+          onConcertDeleted={onConcertDeleted}
         />
       )}
 
@@ -894,6 +916,74 @@ function ConcertTrendTooltip({ active, payload, label, currency }: { active?: bo
   );
 }
 
+const MANUAL_SOURCE_CHART_METRICS: { key: "impressions" | "clicks" | "conversions"; label: string }[] = [
+  { key: "impressions", label: "Impresiones" },
+  { key: "clicks", label: "Clics" },
+  { key: "conversions", label: "Conversiones" },
+];
+
+function ManualSourcesChart({ sources, showConcertName }: { sources: { source: ConcertManualSource; concert: Concert }[]; currency: string; showConcertName: boolean }) {
+  const series = sources.map(({ source, concert }, index) => ({
+    key: `s${index}`,
+    label: showConcertName ? `${source.platform} (${concert.displayName})` : source.platform,
+    color: PLATFORM_COLORS[index % PLATFORM_COLORS.length],
+  }));
+  const chartRows = MANUAL_SOURCE_CHART_METRICS.map((metric) => {
+    const row: Record<string, string | number> = { metric: metric.label };
+    sources.forEach(({ source }, index) => { row[`s${index}`] = source[metric.key] ?? 0; });
+    return row;
+  });
+
+  return (
+    <article className="chart-card concert-breakdown-card">
+      <div className="card-heading">
+        <h2>Fuentes manuales</h2>
+      </div>
+      {series.length > 1 && (
+        <div className="comparison-legend">
+          {series.map((item) => (
+            <span key={item.key}><i style={{ background: item.color }} />{item.label}</span>
+          ))}
+        </div>
+      )}
+      <div className="concert-segment-chart" style={{ height: "17rem" }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={chartRows} margin={{ top: 20, right: 8, left: 8, bottom: 0 }} barCategoryGap="28%">
+            <CartesianGrid stroke="var(--color-rule)" vertical={false} />
+            <XAxis dataKey="metric" tickLine={false} axisLine={false} tick={{ fill: "var(--color-muted)", fontSize: 12 }} />
+            <YAxis tickLine={false} axisLine={false} tick={{ fill: "var(--color-muted)", fontSize: 11 }} tickFormatter={(value) => formatNumber(Number(value))} width={56} />
+            <Tooltip content={<ManualSourcesTooltip series={series} />} cursor={{ fill: "var(--color-surface-muted)" }} />
+            {series.map((item) => (
+              <Bar key={item.key} dataKey={item.key} name={item.label} fill={item.color} radius={[4, 4, 0, 0]} maxBarSize={28} />
+            ))}
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+    </article>
+  );
+}
+
+function ManualSourcesTooltip({ active, payload, label, series }: {
+  active?: boolean;
+  payload?: { dataKey: string; value: number; color: string }[];
+  label?: string;
+  series: { key: string; label: string; color: string }[];
+}) {
+  if (!active || !payload?.length) return null;
+  return (
+    <div className="chart-tooltip">
+      <span>{label}</span>
+      {payload.map((item) => (
+        <div key={item.dataKey}>
+          <i style={{ background: item.color }} />
+          <strong>{series.find((entry) => entry.key === item.dataKey)?.label ?? item.dataKey}</strong>
+          <b>{formatNumber(Number(item.value))}</b>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function ConcertSegmentTooltip({ active, payload, currency }: { active?: boolean; payload?: { payload: ConcertSegmentBreakdown }[]; currency: string }) {
   if (!active || !payload?.length) return null;
   const row = payload[0].payload;
@@ -1068,21 +1158,23 @@ function ribbonPath(x1: number, y1Top: number, y1Bottom: number, x2: number, y2T
   return `M${x1},${y1Top} C${midX},${y1Top} ${midX},${y2Top} ${x2},${y2Top} L${x2},${y2Bottom} C${midX},${y2Bottom} ${midX},${y1Bottom} ${x1},${y1Bottom} Z`;
 }
 
-// Wider than tall on purpose — this card now spans two of the three grid
-// columns (see the "Plataforma" + "Flujo por red" merge), so the viewBox
-// needs to actually use that extra width instead of "meet" letterboxing it.
-const FUNNEL_VIEWBOX_WIDTH = 760;
+// Two layouts, chosen by `wide`: one tuned for a 2-of-3-column card (wider
+// than tall), one for a 1-of-3-column card (closer to square). A single
+// fixed viewBox stretched to fit a narrower card via preserveAspectRatio
+// "meet" shrinks the whole drawing — bars, gaps and 10px text alike — down
+// to whatever scale its WIDTH forces, leaving most of the card's height as
+// dead letterbox space above and below a now-tiny chart.
 const FUNNEL_VIEWBOX_HEIGHT = 220;
 const FUNNEL_BAR_WIDTH = 8;
-const FUNNEL_COL1_X = 8;
-const FUNNEL_COL2_X = 376;
-const FUNNEL_COL3_X = 744;
 const FUNNEL_SEGMENT_GAP = 5;
+const FUNNEL_LAYOUT_WIDE = { viewBoxWidth: 760, col1X: 8, col2X: 376, col3X: 744, labelMaxChars: 28 };
+const FUNNEL_LAYOUT_NARROW = { viewBoxWidth: 320, col1X: 8, col2X: 170, col3X: 300, labelMaxChars: 13 };
 
-function ConcertPlatformFunnel({ rows, currency }: { rows: ConcertSegmentBreakdown[]; currency: string }) {
+function ConcertPlatformFunnel({ rows, currency, wide = true }: { rows: ConcertSegmentBreakdown[]; currency: string; wide?: boolean }) {
   const [showTable, setShowTable] = useState(false);
   const funnelRows = useMemo(() => buildPlatformFunnelRows(rows), [rows]);
   if (!funnelRows) return null;
+  const layout = wide ? FUNNEL_LAYOUT_WIDE : FUNNEL_LAYOUT_NARROW;
 
   const totalImpressions = funnelRows.reduce((sum, row) => sum + row.impressions, 0);
   const totalClicks = funnelRows.reduce((sum, row) => sum + row.clicks, 0);
@@ -1137,7 +1229,7 @@ function ConcertPlatformFunnel({ rows, currency }: { rows: ConcertSegmentBreakdo
   });
 
   return (
-    <article className="chart-card concert-sankey-card span-2">
+    <article className={cn("chart-card concert-sankey-card", wide && "span-2")}>
       <div className="card-heading">
         <h2>Flujo por red</h2>
         <div className="concert-creatives-heading-actions">
@@ -1163,13 +1255,13 @@ function ConcertPlatformFunnel({ rows, currency }: { rows: ConcertSegmentBreakdo
         </div>
       </div>
       <div className="concert-sankey-chart">
-        <svg width="100%" height="100%" viewBox={`0 0 ${FUNNEL_VIEWBOX_WIDTH} ${FUNNEL_VIEWBOX_HEIGHT}`} preserveAspectRatio="xMidYMid meet">
+        <svg width="100%" height="100%" viewBox={`0 0 ${layout.viewBoxWidth} ${FUNNEL_VIEWBOX_HEIGHT}`} preserveAspectRatio="xMidYMid meet">
           {segments.map((segment, index) => (
             <path
               key={`ribbon1-${index}-${segment.row.label}`}
               d={ribbonPath(
-                FUNNEL_COL1_X + FUNNEL_BAR_WIDTH, segment.col1Top, segment.col1Bottom,
-                FUNNEL_COL2_X, segment.col2Top, segment.col2Bottom,
+                layout.col1X + FUNNEL_BAR_WIDTH, segment.col1Top, segment.col1Bottom,
+                layout.col2X, segment.col2Top, segment.col2Bottom,
               )}
               fill={segment.row.color}
               fillOpacity={0.18}
@@ -1179,8 +1271,8 @@ function ConcertPlatformFunnel({ rows, currency }: { rows: ConcertSegmentBreakdo
             <path
               key={`ribbon2-${index}-${segment.row.label}`}
               d={ribbonPath(
-                FUNNEL_COL2_X + FUNNEL_BAR_WIDTH, segment.col2Top, segment.col2Bottom,
-                FUNNEL_COL3_X, resultSlices[index].col3Top, resultSlices[index].col3Bottom,
+                layout.col2X + FUNNEL_BAR_WIDTH, segment.col2Top, segment.col2Bottom,
+                layout.col3X, resultSlices[index].col3Top, resultSlices[index].col3Bottom,
               )}
               fill={segment.row.color}
               fillOpacity={0.18}
@@ -1188,16 +1280,16 @@ function ConcertPlatformFunnel({ rows, currency }: { rows: ConcertSegmentBreakdo
           ))}
           {segments.map((segment, index) => (
             <Fragment key={`bars-${index}-${segment.row.label}`}>
-              <rect x={FUNNEL_COL1_X} y={segment.col1Top} width={FUNNEL_BAR_WIDTH} height={Math.max(segment.col1Bottom - segment.col1Top, 1.5)} fill={segment.row.color} />
-              <rect x={FUNNEL_COL2_X} y={segment.col2Top} width={FUNNEL_BAR_WIDTH} height={Math.max(segment.col2Bottom - segment.col2Top, 1.5)} fill={segment.row.color} />
-              <text x={FUNNEL_COL1_X + FUNNEL_BAR_WIDTH + 6} y={(segment.col1Top + segment.col1Bottom) / 2} dominantBaseline="middle" fontSize={10} fill="var(--color-ink)">
-                {segment.row.label.length > 28 ? `${segment.row.label.slice(0, 27)}…` : segment.row.label}
+              <rect x={layout.col1X} y={segment.col1Top} width={FUNNEL_BAR_WIDTH} height={Math.max(segment.col1Bottom - segment.col1Top, 1.5)} fill={segment.row.color} />
+              <rect x={layout.col2X} y={segment.col2Top} width={FUNNEL_BAR_WIDTH} height={Math.max(segment.col2Bottom - segment.col2Top, 1.5)} fill={segment.row.color} />
+              <text x={layout.col1X + FUNNEL_BAR_WIDTH + 6} y={(segment.col1Top + segment.col1Bottom) / 2} dominantBaseline="middle" fontSize={10} fill="var(--color-ink)">
+                {segment.row.label.length > layout.labelMaxChars ? `${segment.row.label.slice(0, layout.labelMaxChars - 1)}…` : segment.row.label}
                 <tspan fill="var(--color-muted)" dx="4">{formatNumber(segment.row.impressions)}</tspan>
               </text>
             </Fragment>
           ))}
-          <rect x={FUNNEL_COL3_X} y={resultsTop} width={FUNNEL_BAR_WIDTH} height={resultsHeight} fill={SANKEY_RESULTS_COLOR} />
-          <text x={FUNNEL_COL3_X - 6} y={resultsTop + resultsHeight / 2} textAnchor="end" dominantBaseline="middle" fontSize={10} fill="var(--color-ink)">
+          <rect x={layout.col3X} y={resultsTop} width={FUNNEL_BAR_WIDTH} height={resultsHeight} fill={SANKEY_RESULTS_COLOR} />
+          <text x={layout.col3X - 6} y={resultsTop + resultsHeight / 2} textAnchor="end" dominantBaseline="middle" fontSize={10} fill="var(--color-ink)">
             Resultados
             <tspan fill="var(--color-muted)" dx="4">{formatNumber(totalConversions)}</tspan>
           </text>

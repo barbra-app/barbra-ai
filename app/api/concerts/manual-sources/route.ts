@@ -24,6 +24,12 @@ const SourceSchema = z.object({
   ctr: z.number().finite().min(0).max(1).nullable(),
   billedSpend: metric,
   notes: z.string().trim().max(1000),
+  startDate: z.string().date().optional(),
+  endDate: z.string().date().optional(),
+}).superRefine((value, context) => {
+  if (value.startDate && value.endDate && value.startDate > value.endDate) {
+    context.addIssue({ code: "custom", message: "La fecha de finalización debe ser igual o posterior a la de inicio", path: ["endDate"] });
+  }
 });
 
 const CreateSchema = ScopeSchema.extend({ source: SourceSchema });

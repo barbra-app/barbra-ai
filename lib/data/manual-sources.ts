@@ -4,6 +4,10 @@ function metric(value: unknown) {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
+function isoDate(value: unknown) {
+  return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : undefined;
+}
+
 // Reads a concert doc's manualSources array defensively — the field is
 // admin-written and older docs won't have it at all.
 export function manualSources(value: unknown): ConcertManualSource[] {
@@ -23,6 +27,8 @@ export function manualSources(value: unknown): ConcertManualSource[] {
       ctr: metric(data.ctr),
       billedSpend: metric(data.billedSpend),
       notes: typeof data.notes === "string" ? data.notes : "",
+      startDate: isoDate(data.startDate),
+      endDate: isoDate(data.endDate),
       updatedAt: typeof data.updatedAt === "string" ? data.updatedAt : "",
     }];
   });
