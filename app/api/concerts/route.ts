@@ -268,3 +268,49 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: "Unable to update concert" }, { status: 500 });
   }
 }
+
+const DeleteConcertSchema = z.object({
+  id: z.string().min(1).max(200),
+  organizationId: z.string().min(1).max(120),
+  projectId: z.string().min(1).max(120),
+});
+
+export async function DELETE(request: Request) {
+  const url = new URL(request.url);
+  const parsed = DeleteConcertSchema.safeParse({
+    id: url.searchParams.get("id"),
+    organizationId: url.searchParams.get("organizationId"),
+    projectId: url.searchParams.get("projectId"),
+  });
+  if (!parsed.success) {
+    return NextResponse.json({ error: "Invalid concert payload", details: parsed.error.flatten() }, { status: 400 });
+  }
+
+  try {
+    const user = await getRequestUser(request);
+    assertProjectAccess(user, parsed.data.organizationId, parsed.data.projectId);
+    assertAdmin(user);
+
+    const { getFirestoreDocument, deleteFirestoreDocument } = await import("@/lib/firebase/firestore-rest");
+    const useServiceAccount = await runtimeEnv("FIRESTORE_USE_SERVICE_ACCOUNT") === "true";
+    const firebaseIdToken = useServiceAccount ? undefined : requestBearerToken(request) ?? undefined;
+
+    const existing = await getFirestoreDocument("concerts", parsed.data.id, firebaseIdToken);
+    if (!existing.exists || existing.data.projectId !== parsed.data.projectId) {
+      return NextResponse.json({ error: "El evento no existe en este proyecto" }, { status: 404 });
+    }
+
+    await deleteFirestoreDocument("concerts", parsed.data.id, firebaseIdToken);
+
+    return NextResponse.json({ data: { id: parsed.data.id } });
+  } catch (error) {
+    if (error instanceof Error && error.message === "UNAUTHENTICATED") {
+      return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+    }
+    if (error instanceof Error && error.message === "FORBIDDEN") {
+      return NextResponse.json({ error: "Admin access required" }, { status: 403 });
+    }
+    console.error("[concerts] delete failed", error);
+    return NextResponse.json({ error: "Unable to delete concert" }, { status: 500 });
+  }
+}

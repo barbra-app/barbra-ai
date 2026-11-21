@@ -58,6 +58,11 @@ export interface ConcertManualSource {
   ctr: number | null;
   billedSpend: number | null;
   notes: string;
+  // ISO dates (YYYY-MM-DD) the admin typed in to record when this source
+  // ran — purely informational, same as `notes`: these numbers are a lump
+  // sum and aren't bucketed by day, so nothing filters by this range.
+  startDate?: string;
+  endDate?: string;
   updatedAt: string;
 }
 

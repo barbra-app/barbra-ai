@@ -428,6 +428,12 @@ export function IntelligenceDashboard() {
             onConcertUpdated={(concert) => setWorkspace((current) => current
               ? { ...current, concerts: current.concerts.map((item) => item.id === concert.id ? concert : item) }
               : current)}
+            onConcertDeleted={(deletedConcertId) => {
+              setWorkspace((current) => current
+                ? { ...current, concerts: current.concerts.filter((item) => item.id !== deletedConcertId) }
+                : current);
+              setConcertId((current) => current === deletedConcertId ? "all" : current);
+            }}
             onSummaryUpdated={(summary) => setConcertUpdatedAt(summary.updatedAt)}
           />
         ) : (

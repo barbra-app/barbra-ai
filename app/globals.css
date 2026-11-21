@@ -284,7 +284,10 @@ button:disabled { cursor: not-allowed; opacity: 0.55; background-color: var(--co
 .concert-segment-chart { margin-top: var(--space-3); width: 100%; }
 .concert-breakdown-table { margin-top: var(--space-3); display: grid; gap: var(--space-2); overflow-x: auto; }
 .concert-breakdown-row { display: grid; grid-template-columns: repeat(6, minmax(6rem, 1fr)); gap: var(--space-2); padding: var(--space-2) 0; font-size: var(--text-xs); border-bottom: var(--rule); }
-.concert-breakdown-row:last-child { border-bottom: 0; }
+.concert-breakdown-table > *:last-child .concert-breakdown-row,
+.concert-breakdown-table > *:last-child.concert-breakdown-row {
+  border-bottom: 0;
+}
 .concert-breakdown-header { color: var(--color-muted); font-weight: 650; border-bottom: var(--rule-strong); }
 .concert-breakdown-toggle { width: 100%; border: 0; background: transparent; font: inherit; color: inherit; text-align: left; cursor: pointer; }
 .concert-breakdown-toggle:hover { background: var(--color-surface-muted); }

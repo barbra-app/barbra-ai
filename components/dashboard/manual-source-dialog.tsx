@@ -62,6 +62,8 @@ export function ManualSourceDialog({
   const [active, setActive] = useState(true);
   const [values, setValues] = useState(EMPTY_VALUES);
   const [notes, setNotes] = useState("");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { confirm, element: confirmDialog } = useConfirmDialog();
@@ -79,6 +81,8 @@ export function ManualSourceDialog({
       }
       : EMPTY_VALUES);
     setNotes(source?.notes ?? "");
+    setStartDate(source?.startDate ?? "");
+    setEndDate(source?.endDate ?? "");
     setError(null);
   }, [source]);
 
@@ -107,10 +111,18 @@ export function ManualSourceDialog({
       return;
     }
     if (ctr === null && impressions && clicks !== null) ctr = clicks / impressions;
+    if (startDate && endDate && startDate > endDate) {
+      setError("La fecha de finalización debe ser igual o posterior a la de inicio");
+      return;
+    }
     setSubmitting(true);
     setError(null);
     try {
-      const payload = { platform, active, impressions, clicks, conversions, ctr, billedSpend, notes };
+      const payload = {
+        platform, active, impressions, clicks, conversions, ctr, billedSpend, notes,
+        ...(startDate ? { startDate } : {}),
+        ...(endDate ? { endDate } : {}),
+      };
       await send(source ? "PATCH" : "POST", source ? { id: source.id, source: payload } : { source: payload });
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
@@ -167,6 +179,16 @@ export function ManualSourceDialog({
             <span className={`select-dot select-dot-${active ? "green" : "red"}`} aria-hidden="true" />
             {active ? "Activa" : "Inactiva"}
           </button>
+        </div>
+        <div className="manual-source-grid">
+          <label className="auth-field">
+            <span>Fecha de inicio (opcional)</span>
+            <input type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} max={endDate || undefined} />
+          </label>
+          <label className="auth-field">
+            <span>Fecha de finalización (opcional)</span>
+            <input type="date" value={endDate} onChange={(event) => setEndDate(event.target.value)} min={startDate || undefined} />
+          </label>
         </div>
         <div className="manual-source-grid">
           {NUMBER_FIELDS.map((field) => (
